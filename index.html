@@ -1,0 +1,1181 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="description" content="Sistema de Gestión y Seguimiento de Tareas de la Decanatura de Investigación - Escuela de Formación de Infantería de Marina (Investigación Formativa, Aplicada, Sello Editorial y Doctrina)." />
+  <title>Decanatura de Investigación - ESFIM | Sistema de Gestión y Doctrina</title>
+
+  <!-- Google Fonts Preconnect -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+
+  <!-- Stylesheets -->
+  <link rel="stylesheet" href="css/main.css" />
+  <link rel="stylesheet" href="css/components.css" />
+  
+  <!-- PWA Manifest & Mobile Web App Meta -->
+  <link rel="manifest" href="/manifest.json" />
+  <meta name="theme-color" content="#0b1120" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="ESFIM Investigación" />
+  <link rel="apple-touch-icon" href="/img/logo.png" />
+  <link rel="icon" type="image/png" href="/img/logo.png" />
+  <!-- Proteccion JWT: sesion aislada por pestana con sessionStorage -->
+  <script>
+    (function() {
+      var token = sessionStorage.getItem('efim_token');
+      var user = sessionStorage.getItem('efim_user');
+      if (!token) {
+        var localToken = localStorage.getItem('efim_token');
+        var localUser = localStorage.getItem('efim_user');
+        if (localToken) {
+          token = localToken;
+          sessionStorage.setItem('esfim_token', localToken);
+          if (localUser) sessionStorage.setItem('esfim_user', localUser);
+        }
+      }
+      if (!token) {
+        window.location.replace('/');
+      }
+    })();
+  </script>
+</head>
+<body>
+
+  <!-- Toast Notification Container -->
+  <div id="toastContainer" class="toast-container" aria-live="polite"></div>
+
+  <!-- Top Navigation Bar -->
+  <header class="topbar">
+    <div class="brand">
+      <img src="/img/logo.png" alt="Decanatura de Investigación ESFIM" class="brand-logo-img" />
+      <div class="brand-info">
+        <h1>Decanatura de Investigación <span class="brand-badge">ESFIM</span></h1>
+        <p>Mando y Seguimiento: Formativa · Aplicada · Sello Editorial · Doctrina · Actividades de Decanatura</p>
+      </div>
+    </div>
+
+    <!-- Active Role Pill & User Menu -->
+    <div class="topbar-actions">
+      <div id="rolePill" class="role-pill admin">
+        🛡️ DECANO
+      </div>
+
+      <div id="liveSyncPill" class="live-sync-indicator" title="Sincronización multiusuario en tiempo real activa">
+        <span class="pulse-dot"></span> EN VIVO
+      </div>
+
+      <!-- Notifications Bell -->
+      <div class="notifications-wrapper">
+        <button id="btnNotifications" class="btn-icon btn-notifications" title="Notificaciones del Sistema">
+          🔔
+          <span id="notifBadge" class="badge-count" style="display:none;">0</span>
+        </button>
+        <div id="notificationsDropdown" class="notifications-dropdown">
+          <div class="notif-header">
+            <h4>🔔 Notificaciones</h4>
+            <button class="btn-text-sm" onclick="App.markAllNotificationsRead()">Marcar leídas</button>
+          </div>
+          <div id="notifList" class="notif-list">
+            <div class="notif-empty">No hay notificaciones nuevas</div>
+          </div>
+          <div class="notif-footer">
+            <button class="btn-text-sm" onclick="App.openNotificationsModal(); App.closeNotificationsDropdown();">Ver historial completo</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Theme Switcher (Único botón de control en barra) -->
+      <button id="themeToggleBtn" class="btn-icon btn-theme" onclick="App.toggleTheme()" title="Cambiar Tema (Oscuro / Claro)">
+        🌙 <span class="btn-label-sm">Tema</span>
+      </button>
+
+      <!-- Current User Profile & Dropdown Menu (Correo, Credenciales y Descargar App van aquí adentro) -->
+      <div class="user-profile-wrapper" id="userProfileWrapper">
+        <button class="user-profile-trigger" id="userProfileTrigger" onclick="App.toggleUserDropdown(event)" aria-expanded="false" title="Menú de Usuario y Opciones">
+          <div class="user-avatar" id="topbarAvatar">DI</div>
+          <div class="user-details-compact">
+            <span class="user-name" id="topbarUserName">Decano de Investigación</span>
+            <span class="user-dept" id="topbarUserDept">Decano</span>
+          </div>
+          <span class="user-dropdown-caret" id="userDropdownCaret">▾</span>
+        </button>
+
+        <!-- Menú que se despliega DEBAJO para ahorrar espacio horizontal -->
+        <div class="user-dropdown-menu" id="userDropdownMenu">
+          <div class="user-dropdown-header" style="display:flex; align-items:center; gap:0.85rem;">
+            <div class="docente-avatar-wrap" onclick="App.triggerDirectProfilePhotoUpload()" style="position:relative; cursor:pointer;" title="Clic para subir o cambiar foto de avatar">
+              <div class="dropdown-avatar" id="dropdownAvatar">DI</div>
+              <span class="avatar-camera-pill" style="position:absolute; bottom:-2px; right:-2px; width:18px; height:18px; background:var(--primary); color:#fff; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:0.6rem; border:2px solid var(--surface-1); box-shadow:0 1px 3px rgba(0,0,0,0.4);" title="Cambiar foto">📷</span>
+            </div>
+            <div class="dropdown-user-info" style="flex:1; min-width:0;">
+              <span class="dropdown-user-name" id="dropdownUserName">Decano de Investigación</span>
+              <span class="dropdown-user-email" id="dropdownUserEmail">juan.perdomo@esfim.edu.co</span>
+              <div style="display:flex; align-items:center; gap:0.45rem; margin-top:0.25rem; flex-wrap:wrap;">
+                <span class="dropdown-user-badge" id="dropdownUserBadge">🛡️ Decano</span>
+                <button type="button" onclick="App.triggerDirectProfilePhotoUpload()" class="btn-text-sm" style="color:var(--primary); font-size:0.73rem; font-weight:700; cursor:pointer; padding:0.1rem 0.35rem; background:rgba(59,130,246,0.1); border:1px solid rgba(59,130,246,0.25); border-radius:4px;" title="Subir o cambiar foto de perfil">
+                  📷 Cambiar Foto
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <div class="user-dropdown-body">
+            <button class="dropdown-item" id="btnProfile" onclick="App.openProfileModal(); App.closeUserDropdown();" title="Mi Perfil, Foto de Avatar y Credenciales">
+              <span class="dropdown-item-icon">👤</span>
+              <div class="dropdown-item-content">
+                <strong>Mi Perfil y Foto de Avatar</strong>
+                <span>Subir foto, correo institucional y contraseña</span>
+              </div>
+            </button>
+
+            <button class="dropdown-item" id="dropdownBtnEmail" onclick="EmailModule.openConfigModal(); App.closeUserDropdown();" title="Configurar correo SMTP M365">
+              <span class="dropdown-item-icon">📧</span>
+              <div class="dropdown-item-content">
+                <strong>Correo Institucional M365</strong>
+                <span>Bandeja y configuración SMTP</span>
+              </div>
+            </button>
+
+            <button class="dropdown-item" id="dropdownBtnInstall" onclick="App.promptPwaInstall(); App.closeUserDropdown();" title="Descargar e instalar aplicativo en este dispositivo">
+              <span class="dropdown-item-icon">📲</span>
+              <div class="dropdown-item-content">
+                <strong>Descargar Aplicativo</strong>
+                <span id="dropdownPwaText">Instalar en la pantalla de inicio</span>
+              </div>
+            </button>
+          </div>
+
+          <div class="user-dropdown-footer">
+            <button class="btn-dropdown-logout" id="btnLogout" onclick="Auth.logout()" title="Cerrar Sesión del Sistema">
+              🚪 <span>Cerrar Sesión (Salir)</span>
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </header>
+
+
+  <!-- MAIN VIEW CONTAINER -->
+  <main class="main-container">
+    
+    <!-- ====================================================================
+         1. ADMIN VIEW (Decano de Investigación)
+         ==================================================================== -->
+    <section id="adminView" class="view-section active">
+      
+      <!-- Operational Header -->
+      <div class="section-header">
+        <div class="header-titles">
+          <h2>Panel de Comando y Control de la Decanatura</h2>
+          <p>Supervisión de compromisos por área (Formativa, Aplicada, Editorial, Doctrina y Decanatura), control de % de avance y resolución de novedades.</p>
+        </div>
+        <div class="header-actions">
+          <button class="btn btn-secondary" onclick="AdminModule.openCreateEmployeeModal('directory')" title="Directorio y Administración de Docentes">
+            👥 Gestión de Docentes
+          </button>
+          <button class="btn btn-warning" onclick="AdminModule.openPurgeCompletedModal()" title="Depurar y eliminar compromisos cumplidos para optimizar espacio en base de datos">
+            🧹 Depurar Cumplidas
+          </button>
+          <button class="btn btn-primary" onclick="AdminModule.openCreateModal()">
+            + Delegar Tarea Académica
+          </button>
+        </div>
+      </div>
+
+      <!-- Live Notification Banner for Critical / Overdue Tasks -->
+      <div id="adminAlertBanners" class="alert-banners-container"></div>
+
+      <!-- Institutional KPIs Grid -->
+      <div class="kpi-grid" id="adminKPIs"></div>
+
+      <!-- Planta de Docentes Investigadores de la Decanatura -->
+      <section class="docentes-section" id="adminDocentesSection">
+        <div class="docentes-section-header">
+          <div class="docentes-header-titles">
+            <h3 class="docentes-title">
+              👥 Docentes Investigadores
+              <span id="adminDocentesCountBadge" class="badge badge-info" style="font-size:0.75rem; padding: 2px 8px;">Cargando...</span>
+            </h3>
+            <p class="docentes-subtitle">
+              Planta docente activa registrada en MongoDB. Supervisa su carga académica, tareas delegadas y despacha notificaciones.
+            </p>
+          </div>
+          <div class="docentes-header-actions">
+            <button type="button" class="btn btn-sm btn-secondary" onclick="AdminModule.openCreateEmployeeModal('directory')" title="Directorio completo y administración de docentes">
+              📋 Directorio Nómina
+            </button>
+            <button type="button" class="btn btn-sm btn-primary" onclick="AdminModule.openCreateEmployeeModal('register')" title="Registrar nuevo docente investigador">
+              ➕ Registrar Docente
+            </button>
+          </div>
+        </div>
+        <div id="adminDocentesGrid" class="docentes-cards-grid"></div>
+      </section>
+
+      <!-- Tasks Section -->
+      <div class="tasks-section">
+        
+        <!-- Filter & Control Bar -->
+        <div class="control-bar">
+          <div class="search-filter-group">
+            <div class="search-input-wrapper">
+              <span class="search-icon">🔍</span>
+              <input type="text" id="adminSearchInput" class="input-search" placeholder="Buscar por tarea, docente o tema..." />
+            </div>
+
+            <!-- Filter by Research Area -->
+            <select id="adminAreaFilterSelect" class="select-filter" title="Filtrar por Área Estratégica">
+              <option value="all">Todas las Áreas</option>
+              <option value="formativa">🔬 1. Inv. Formativa (Semilleros)</option>
+              <option value="aplicada">🚀 2. Inv. Aplicada (Proyectos)</option>
+              <option value="editorial">📚 3. Sello Editorial (Libros/Revista)</option>
+              <option value="doctrina">📜 4. Doctrina (Manuales/Cartillas)</option>
+              <option value="decanatura">🏛️ 5. Actividades de Decanatura (Todos los Miembros)</option>
+            </select>
+
+            <!-- Filter by Status / Assignee -->
+            <select id="adminFilterSelect" class="select-filter" title="Filtrar por estado o docente">
+              <option value="all">Todos los Estados</option>
+              <option value="pendiente">Pendientes de inicio</option>
+              <option value="en_progreso">En proceso</option>
+              <option value="bloqueado">Con obstáculos reportados</option>
+              <option value="completado">Completadas / Aprobadas</option>
+              <optgroup label="Filtrar por Docente" id="adminFilterDocentesOptgroup">
+                <!-- Se pobla dinámicamente desde MongoDB -->
+              </optgroup>
+            </select>
+
+            <!-- Filter by Alert Level -->
+            <select id="adminAlertSelect" class="select-filter" title="Filtrar por alerta de fecha">
+              <option value="all">Todas las alertas</option>
+              <option value="danger">🚨 Vencidas fuera de plazo</option>
+              <option value="warning">⏳ Vencen hoy (<24h)</option>
+              <option value="issue">🛑 Con obstáculo reportado</option>
+              <option value="completado">✅ Cumplidas</option>
+            </select>
+          </div>
+
+          <!-- View Mode Toggle -->
+          <div class="view-tabs">
+            <button id="viewTab-cards" class="view-tab-btn active" onclick="App.setAdminView('cards')">
+              🗂️ Tarjetas
+            </button>
+            <button id="viewTab-table" class="view-tab-btn" onclick="App.setAdminView('table')">
+              📊 Tabla
+            </button>
+          </div>
+        </div>
+
+        <!-- Tasks Container -->
+        <div id="adminTasksContainer"></div>
+      </section>
+
+      <!-- ====================================================================
+           2. DOCENTE INVESTIGADOR VIEW
+           ==================================================================== -->
+      <section id="employeeView" style="display:none;">
+        <div class="page-header">
+          <div class="page-header-title">
+            <h2>Panel de Trabajo - Docente Investigador</h2>
+            <p>Consulta las tareas y proyectos asignados por el Decano de Investigación. Reporta tus porcentajes de avance y notifica obstáculos.</p>
+          </div>
+        </div>
+
+        <!-- KPI Metrics Grid -->
+        <div id="employeeKPIs" class="kpi-grid"></div>
+
+        <!-- Employee Alert Banners -->
+        <div id="employeeAlertBanners" class="alert-banner-container"></div>
+
+        <!-- Control Bar -->
+        <div class="control-bar">
+          <div class="search-filter-group">
+            <div class="search-input-wrapper">
+              <span class="search-icon">🔍</span>
+              <input type="text" id="employeeSearchInput" class="input-search" placeholder="Buscar en mis tareas asignadas..." />
+            </div>
+
+            <select id="employeeFilterSelect" class="select-filter">
+              <option value="all">Todas mis tareas</option>
+              <option value="en_progreso">En proceso</option>
+              <option value="bloqueado">Con obstáculos reportados</option>
+              <option value="completado">Completadas / Entregadas</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- Employee Tasks Container -->
+        <div id="employeeTasksContainer"></div>
+      </section>
+
+    </div>
+  </main>
+
+  <!-- ==========================================================================
+       MODALS
+       ========================================================================== -->
+
+  <!-- 1. MODAL: DELEGAR NUEVA TAREA ACADÉMICA (Decanatura) -->
+  <div id="createTaskModal" class="modal-overlay">
+    <div class="modal-dialog">
+      <div class="modal-header">
+        <h3>🛡️ Delegar Tarea de Investigación / Doctrina</h3>
+        <button class="btn-close-modal">&times;</button>
+      </div>
+      <form id="createTaskForm">
+        <div class="modal-body">
+          <div class="form-group">
+            <label for="taskAreaSelect">Área Estratégica de la Decanatura *</label>
+            <select id="taskAreaSelect" class="form-control" onchange="AdminModule.onTaskAreaSelectChange(this.value)" required>
+              <option value="formativa">🔬 1. Investigación Formativa (Semilleros de Investigación)</option>
+              <option value="aplicada">🚀 2. Investigación Aplicada (Formulación de Proyectos y Grupos)</option>
+              <option value="editorial">📚 3. Sello Editorial (Elaboración y Publicación de Libros y Revistas)</option>
+              <option value="doctrina">📜 4. Doctrina (Manuales y Cartillas Doctrinarias)</option>
+              <option value="decanatura">🏛️ 5. Actividades de Decanatura (Plenarias / Todos los Miembros Involucrados)</option>
+            </select>
+          </div>
+
+          <div class="form-group">
+            <label for="taskTitleInput">Título de la Tarea / Compromiso Académico *</label>
+            <input type="text" id="taskTitleInput" class="form-control" required placeholder="Ej. Plan Operativo o Plenaria General de Decanatura..." />
+          </div>
+
+          <div class="form-group">
+            <label for="taskDescInput">Descripción, Alcance y Objetivos *</label>
+            <textarea id="taskDescInput" class="form-control" required placeholder="Detalla los requerimientos específicos, entregables académicos y criterios de aceptación..."></textarea>
+          </div>
+
+          <!-- Multi-Docente Assignees Selector -->
+          <div class="form-group">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.35rem; flex-wrap: wrap; gap: 0.5rem;">
+              <label style="margin: 0; font-weight: 600;">Docentes Involucrados (Despacho Simultáneo de Notificaciones) *</label>
+              <div style="display: flex; gap: 0.35rem;">
+                <button type="button" class="btn btn-xs btn-outline-primary" onclick="AdminModule.selectAllAssignees(true)">☑️ Involucrar a Todos</button>
+                <button type="button" class="btn btn-xs btn-outline-secondary" onclick="AdminModule.selectAllAssignees(false)">Deseleccionar</button>
+              </div>
+            </div>
+
+            <!-- Checkbox List of Registered Teachers -->
+            <div id="assigneesCheckboxContainer" style="max-height: 145px; overflow-y: auto; border: 1px solid var(--border); border-radius: 8px; padding: 0.5rem; background: var(--surface-2); display: flex; flex-direction: column; gap: 0.35rem;">
+              <!-- Populated dynamically via AdminModule.populateAssigneesChecklist() -->
+            </div>
+
+            <!-- Custom Additional Emails Input -->
+            <div style="margin-top: 0.5rem;">
+              <label for="customAssigneeEmailsInput" style="font-size: 0.8rem; color: var(--text-muted); font-weight: 500; margin-bottom: 0.2rem; display: block;">
+                ➕ Añadir otros correos docentes adicionales (separados por coma si son varios):
+              </label>
+              <input type="text" id="customAssigneeEmailsInput" class="form-control" placeholder="ej. docente1@esfim.edu.co, docente2@esfim.edu.co" oninput="AdminModule.updateAssigneesSummary()" />
+            </div>
+
+            <!-- Live Multi-Dispatch Summary -->
+            <div id="assigneesSummaryBox" style="margin-top: 0.4rem; padding: 0.5rem 0.75rem; background: rgba(37, 99, 235, 0.08); border: 1px solid rgba(37, 99, 235, 0.25); border-radius: 6px; font-size: 0.8rem;">
+              <div style="color: #2563eb; font-weight: 600; display: flex; align-items: center; justify-content: space-between;">
+                <span>📧 Notificación se despachará simultáneamente a:</span>
+                <span id="assigneesCountBadge" class="badge badge-info" style="font-size: 0.72rem;">0 seleccionados</span>
+              </div>
+              <div id="assigneesListPreview" style="color: var(--text-main); font-size: 0.78rem; margin-top: 0.25rem; word-break: break-all;">
+                Ningún docente seleccionado.
+              </div>
+            </div>
+          </div>
+
+          <div class="form-row">
+            <div class="form-group" style="flex: 1;">
+              <label for="taskPrioritySelect">Nivel de Prioridad *</label>
+              <select id="taskPrioritySelect" class="form-control">
+                <option value="urgent">🚨 Urgente</option>
+                <option value="high" selected>🔥 Alta</option>
+                <option value="medium">⚡ Media</option>
+                <option value="low">📋 Baja</option>
+              </select>
+            </div>
+            <div class="form-group" style="flex: 1.5;">
+              <label for="taskDueDateInput">Fecha y Hora Límite de Entrega *</label>
+              <input type="datetime-local" id="taskDueDateInput" class="form-control" required />
+            </div>
+          </div>
+
+          <!-- Dynamic Checklist -->
+          <div class="form-group">
+            <label>Entregables Requeridos (Checklist)</label>
+            <div id="checklistItemsContainer" class="checklist-builder"></div>
+            <button type="button" id="btnAddChecklistItem" class="btn btn-sm btn-secondary" style="margin-top: 0.5rem; align-self: flex-start;">
+              + Añadir Entregable
+            </button>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary btn-modal-cancel">Cancelar</button>
+          <button type="submit" class="btn btn-primary">🚀 Delegar y Despachar Notificaciones Simultáneas</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- 2. MODAL: ENVIAR RECORDATORIO FORMAL (Decanatura) -->
+  <div id="reminderModal" class="modal-overlay">
+    <div class="modal-dialog">
+      <div class="modal-header">
+        <h3>⏰ Enviar Recordatorio Oficial de Decanatura</h3>
+        <button class="btn-close-modal">&times;</button>
+      </div>
+      <form id="reminderForm">
+        <input type="hidden" id="reminderTaskId" />
+        <div class="modal-body">
+          <p style="font-size:0.9rem;">
+            Docente Destinatario: <strong id="reminderTargetName" style="color:var(--primary);"></strong><br>
+            Tarea Académica: <span id="reminderTaskTitle" style="color:var(--text-main); font-weight:600;"></span>
+          </p>
+
+          <div class="form-group">
+            <label for="reminderMessageInput">Mensaje Oficial de Seguimiento / Recordatorio *</label>
+            <textarea id="reminderMessageInput" class="form-control" rows="4" required placeholder="Escriba las directrices de la Decanatura sobre el avance o fecha límite..."></textarea>
+          </div>
+
+          <div class="modal-callout-warning">
+            💡 <strong>Nota del Sistema:</strong> Este mensaje emitirá una alerta sonora y visual en el panel del docente, y quedará asentado formalmente en el historial de la tarea.
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary btn-modal-cancel">Cancelar</button>
+          <button type="submit" class="btn btn-warning">Emitir Recordatorio de Decanatura</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- 3. MODAL: REPORTAR PROBLEMA / OBSTÁCULO (Docente) -->
+  <div id="reportIssueModal" class="modal-overlay">
+    <div class="modal-dialog">
+      <div class="modal-header">
+        <h3 style="color:#fb7185;">🛑 Reportar Obstáculo / Novedad al Decano</h3>
+        <button class="btn-close-modal">&times;</button>
+      </div>
+      <form id="reportIssueForm">
+        <input type="hidden" id="reportIssueTaskId" />
+        <div class="modal-body">
+          <p style="font-size:0.9rem;">
+            Tarea en conflicto: <strong id="reportIssueTaskTitle" style="color:var(--text-main);"></strong>
+          </p>
+
+          <div class="form-group">
+            <label for="reportIssueTypeSelect">Tipo de Obstáculo / Novedad *</label>
+            <select id="reportIssueTypeSelect" class="form-control" required>
+              <option value="Aval o Autorización de Decanatura Requerida">Aval o Autorización de Decanatura Requerida</option>
+              <option value="Recursos, Presupuesto o Equipos de Laboratorio">Recursos, Presupuesto o Equipos de Laboratorio</option>
+              <option value="Evaluación de Pares / Comité Editorial Externo">Evaluación de Pares / Comité Editorial Externo</option>
+              <option value="Coordinación con Unidades Operativas (Doctrina)">Coordinación con Unidades Operativas (Doctrina)</option>
+              <option value="Convocatoria o Estudiantes de Semilleros">Convocatoria o Estudiantes de Semilleros</option>
+              <option value="Plataformas Académicas (MinCiencias, GrupLAC, OJS)">Plataformas Académicas (MinCiencias, GrupLAC, OJS)</option>
+              <option value="Imposibilidad de Cumplimiento de Plazo">Imposibilidad de Cumplir el Plazo Establecido</option>
+            </select>
+          </div>
+
+          <div class="form-group">
+            <label for="reportIssueDescriptionInput">Descripción Detallada del Obstáculo *</label>
+            <textarea id="reportIssueDescriptionInput" class="form-control" rows="4" required placeholder="Explica con claridad la situación, qué te impide avanzar y qué apoyo o decisión requieres del Decano de Investigación..."></textarea>
+          </div>
+
+          <div class="modal-callout-danger">
+            ⚠️ Al reportar este obstáculo, la tarea se marcará en estado de novedad para que el Decano la verifique de inmediato.
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary btn-modal-cancel">Cancelar</button>
+          <button type="submit" class="btn btn-danger">Enviar Novedad al Decano</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- 4. MODAL: VERIFICAR Y RESOLVER PROBLEMA (Decanatura) -->
+  <div id="verifyIssueModal" class="modal-overlay">
+    <div class="modal-dialog">
+      <div class="modal-header">
+        <h3>🔍 Verificación y Resolución de Obstáculo - Decanatura</h3>
+        <button class="btn-close-modal">&times;</button>
+      </div>
+      <form id="verifyIssueForm">
+        <input type="hidden" id="verifyIssueTaskId" />
+        <div class="modal-body">
+          <div style="background: var(--bg-primary); border: 1px solid var(--border-subtle); border-radius: var(--radius-md); padding: 1rem;">
+            <div style="font-size:0.8rem; color:var(--text-muted); margin-bottom:0.25rem;">
+              Tarea: <strong id="verifyIssueTaskTitle" style="color:var(--text-main);"></strong>
+            </div>
+            <div style="font-size:0.8rem; color:var(--text-muted); margin-bottom:0.4rem;">
+              Reportado por: <strong id="verifyIssueReportedBy" style="color:#67e8f9;"></strong> | Tipo: <strong id="verifyIssueType" style="color:#d946ef;"></strong>
+            </div>
+            <div class="issue-quote-box">
+              "<span id="verifyIssueDescription"></span>"
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label for="verifyIssueResolutionInput">Directrices e Instrucciones del Decano para el Docente *</label>
+            <textarea id="verifyIssueResolutionInput" class="form-control" rows="3" required placeholder="Escriba las orientaciones, autorizaciones concedidas o coordinaciones realizadas para superar el obstáculo..."></textarea>
+          </div>
+
+          <div class="form-group">
+            <label style="display:flex; align-items:center; gap:0.5rem; cursor:pointer;">
+              <input type="checkbox" id="verifyIssueExtendCheckbox" style="accent-color:var(--primary); width:18px; height:18px;" />
+              <span>¿Reprogramar / Extender Fecha Límite de Entrega?</span>
+            </label>
+            <input type="datetime-local" id="verifyIssueNewDateInput" class="form-control" style="margin-top:0.5rem;" />
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary btn-modal-cancel">Cancelar</button>
+          <button type="submit" class="btn btn-primary">Aprobar Resolución y Desbloquear Tarea</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- 5. MODAL: DETALLE COMPLETO DE TAREA, CHECKLIST Y COMENTARIOS -->
+  <div id="taskDetailModal" class="modal-overlay">
+    <div class="modal-dialog lg">
+      <div class="modal-header">
+        <div style="display:flex; flex-direction:column; gap:0.35rem;">
+          <div id="detailTaskBadges" class="task-badges"></div>
+          <h3 id="detailTaskTitle" style="font-size:1.35rem; margin-top:0.2rem;"></h3>
+        </div>
+        <button class="btn-close-modal">&times;</button>
+      </div>
+      <div class="modal-body">
+        <p id="detailTaskDesc" style="color:var(--text-main); font-size:0.925rem; line-height:1.6;"></p>
+
+        <!-- Dynamic Issue Warning Box if blocked -->
+        <div id="detailIssueBox" style="display:none;"></div>
+
+        <!-- Task Metadata Cards -->
+        <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap:0.75rem; background:var(--bg-primary); padding:1rem; border-radius:var(--radius-md); border:1px solid var(--border-subtle);">
+          <div>
+            <span style="font-size:0.75rem; color:var(--text-muted); display:block;">Responsable</span>
+            <strong id="detailAssigneeName" style="color:var(--text-main); font-size:0.85rem;"></strong>
+          </div>
+          <div>
+            <span style="font-size:0.75rem; color:var(--text-muted); display:block;">Fecha Límite</span>
+            <strong id="detailDueDate" style="color:var(--text-main); font-size:0.85rem; font-family:var(--font-mono);"></strong>
+          </div>
+          <div>
+            <span style="font-size:0.75rem; color:var(--text-muted); display:block;">Tiempo Restante</span>
+            <strong id="detailTimeRemaining" style="color:#60a5fa; font-size:0.85rem;"></strong>
+          </div>
+        </div>
+
+        <!-- Checklist of Deliverables -->
+        <div>
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.6rem;">
+            <h4 style="font-size:0.95rem;">Entregables y Criterios de Aceptación</h4>
+            <span id="detailProgressText" style="font-size:0.85rem; font-family:var(--font-mono); font-weight:700; color:var(--primary);">0%</span>
+          </div>
+
+          <div class="progress-bar-bg" style="height:7px; margin-bottom:0.75rem;">
+            <div id="detailProgressBar" class="progress-bar-fill" style="width: 0%;"></div>
+          </div>
+
+          <!-- Interactive Percentage Controller Container -->
+          <div id="detailProgressController" style="display:none; margin-bottom:1rem;"></div>
+
+          <div id="detailChecklistContainer" class="task-checklist"></div>
+        </div>
+
+        <!-- Comments & Recordatorios Section -->
+        <div>
+          <h4 style="font-size:0.95rem; margin-bottom:0.6rem;">Historial de Mensajes, Recordatorios y Comentarios</h4>
+          <div id="detailCommentsList" class="comments-container"></div>
+
+          <!-- Add comment input -->
+          <form id="taskCommentForm" class="add-comment-box">
+            <input type="text" id="taskCommentInput" class="form-control" placeholder="Escribir un comentario o actualización..." required />
+            <button type="submit" class="btn btn-primary btn-sm">Enviar</button>
+          </form>
+        </div>
+      </div>
+      <div class="modal-footer" style="justify-content:space-between;">
+        <button type="button" class="btn btn-secondary btn-modal-cancel">Cerrar</button>
+        <div id="detailModalActions" style="display:flex; gap:0.5rem;"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 5.5 MODAL: ASIGNAR / REGISTRAR / ELIMINAR DOCENTE -->
+  <div id="createEmployeeModal" class="modal-overlay">
+    <div class="modal-dialog lg">
+      <div class="modal-header">
+        <h3 style="margin:0;">👥 Nómina y Gestión de Docentes Investigadores</h3>
+        <button type="button" class="btn-icon btn-modal-cancel" title="Cerrar">&times;</button>
+      </div>
+
+      <!-- Tab Buttons -->
+      <div style="display:flex; gap:0.5rem; padding:0.75rem 1.5rem 0; border-bottom:1px solid var(--border);">
+        <button type="button" class="btn btn-sm btn-secondary doc-modal-tab-btn active" data-tab="register" onclick="AdminModule.switchDocenteTab('register')">
+          ➕ Registrar Nuevo Docente
+        </button>
+        <button type="button" class="btn btn-sm btn-secondary doc-modal-tab-btn" data-tab="directory" onclick="AdminModule.switchDocenteTab('directory')">
+          📋 Directorio y Retiro de Docentes
+        </button>
+      </div>
+
+      <!-- TAB 1: REGISTRATION FORM -->
+      <div id="tabDocentePane-register" class="doc-modal-tab-pane">
+        <form id="createEmployeeForm">
+          <div class="modal-body">
+            <p style="font-size:0.85rem; color:var(--text-muted); margin-bottom:1rem;">
+              Ingrese los datos del docente para asignarlo formalmente a un área de la Decanatura. El correo quedará disponible inmediatamente para la delegación de tareas.
+            </p>
+
+            <!-- Foto del Docente / Miembro -->
+            <div class="avatar-upload-card" style="display:flex; align-items:center; gap:1.15rem; padding:0.85rem 1rem; background:var(--surface-2); border:1px solid var(--border); border-radius:10px; margin-bottom:1rem;">
+              <div class="avatar-preview-wrap" onclick="document.getElementById('empPhotoInput').click()" style="position:relative; width:58px; height:58px; border-radius:50%; cursor:pointer; flex-shrink:0;" title="Clic para seleccionar foto del docente">
+                <div id="empAvatarPreview" class="user-avatar" style="width:58px; height:58px; font-size:1.15rem; font-weight:800; border:2px solid var(--primary); background-size:cover; background-position:center;">DOC</div>
+                <div style="position:absolute; bottom:-2px; right:-2px; width:22px; height:22px; background:var(--primary); color:#fff; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:0.7rem; border:2px solid var(--surface-1);">📷</div>
+              </div>
+              <div style="flex:1; min-width:0;">
+                <strong style="display:block; font-size:0.85rem; color:var(--text-main); margin-bottom:0.15rem;">Foto del Docente / Miembro (Opcional)</strong>
+                <span style="display:block; font-size:0.75rem; color:var(--text-muted); margin-bottom:0.4rem;">Sube una foto del miembro o déjalo en blanco para usar sus iniciales.</span>
+                <div style="display:flex; gap:0.4rem; align-items:center;">
+                  <button type="button" class="btn btn-sm btn-secondary" onclick="document.getElementById('empPhotoInput').click()" style="padding:0.25rem 0.65rem; font-size:0.75rem;">
+                    📁 Seleccionar Foto
+                  </button>
+                  <button type="button" class="btn-text-sm" id="btnRemoveEmpPhoto" onclick="AdminModule.removeEmpPhoto()" style="color:#ef4444; font-size:0.75rem; display:none;">
+                    🗑️ Quitar
+                  </button>
+                </div>
+                <input type="file" id="empPhotoInput" accept="image/png, image/jpeg, image/webp" style="display:none;" onchange="AdminModule.handleEmpPhotoSelected(event)" />
+              </div>
+            </div>
+
+            <div class="form-group">
+              <label for="empNameInput">Nombre Completo y Grado / Título Académico *</label>
+              <input type="text" id="empNameInput" class="form-control" required placeholder="Ej. Mg. Jeison Tapia o Dr. Roberto Soto" />
+            </div>
+
+            <div class="form-group">
+              <label for="empEmailInput">Correo Electrónico Institucional *</label>
+              <input type="email" id="empEmailInput" class="form-control" required placeholder="ej. jeison.tapia@esfim.edu.co" />
+              <small style="color:var(--text-muted); font-size:0.75rem;">A esta dirección llegarán las notificaciones oficiales de compromisos.</small>
+            </div>
+
+            <div class="form-row">
+              <div class="form-group" style="flex:1;">
+                <label for="empRoleInput">Rol en el Sistema *</label>
+                <select id="empRoleInput" class="form-control">
+                  <option value="employee" selected>👨‍🏫 Docente Investigador (Asignado)</option>
+                  <option value="admin">🎖️ Administrador / Gestor de Decanatura (Mando y Delegación)</option>
+                </select>
+              </div>
+              <div class="form-group" style="flex:1;">
+                <label for="empAreaInput">Área Estratégica Asignada *</label>
+                <select id="empAreaInput" class="form-control">
+                  <option value="formativa">🔬 1. Investigación Formativa (Semilleros)</option>
+                  <option value="aplicada">🚀 2. Investigación Aplicada (Proyectos)</option>
+                  <option value="editorial">📚 3. Sello Editorial (Libros/Revistas)</option>
+                  <option value="doctrina">📜 4. Doctrina (Manuales/Cartillas)</option>
+                  <option value="decanatura">🏛️ 5. Actividades de Decanatura (Plenaria General)</option>
+                </select>
+              </div>
+            </div>
+
+            <div class="form-row">
+              <div class="form-group" style="flex:1;">
+                <label for="empPassInput">Contraseña Inicial / Temporal *</label>
+                <input type="password" id="empPassInput" class="form-control" value="Efim2026*Docente" placeholder="Mínimo 6 caracteres" />
+              </div>
+              <div class="form-group" style="flex:1;">
+                <label for="empDeptInput">Línea de Investigación o Especialidad</label>
+                <input type="text" id="empDeptInput" class="form-control" placeholder="Ej. Semillero Táctico / Ribereñas" />
+              </div>
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-secondary btn-modal-cancel">Cancelar</button>
+            <button type="submit" class="btn btn-primary">Guardar y Habilitar Docente</button>
+          </div>
+        </form>
+      </div>
+
+      <!-- TAB 2: DIRECTORY & DELETE -->
+      <div id="tabDocentePane-directory" class="doc-modal-tab-pane" style="display:none;">
+        <div class="modal-body">
+          <p style="font-size:0.85rem; color:var(--text-muted); margin-bottom:1rem;">
+            Listado oficial de docentes investigadores registrados en la Decanatura. El Decano puede retirar a cualquier docente si concluyó su comisión o no continuará en el área.
+          </p>
+          <div id="employeeDirectoryList" style="max-height:380px; overflow-y:auto;"></div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary btn-modal-cancel">Cerrar</button>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- 6. MODAL: BANDEJA DE NOTIFICACIONES -->
+  <div id="notificationsModal" class="modal-overlay">
+    <div class="modal-dialog">
+      <div class="modal-header">
+        <h3>🔔 Notificaciones y Avisos de Decanatura</h3>
+        <button class="btn-close-modal">&times;</button>
+      </div>
+      <div class="modal-body" style="padding:0.75rem;">
+        <div id="notificationsList" style="max-height:400px; overflow-y:auto;"></div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary btn-modal-cancel">Cerrar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 7. MODAL: LOGIN / REGISTRO MANUAL -->
+  <div id="authModal" class="modal-overlay">
+    <div class="modal-dialog">
+      <div class="modal-header">
+        <h3>Cuenta Institucional EFIM</h3>
+        <button class="btn-close-modal">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="auth-tabs">
+          <button id="authTabLogin" class="auth-tab-btn active" onclick="App.openAuthModal('login')">Iniciar Sesión</button>
+          <button id="authTabRegister" class="auth-tab-btn" onclick="App.openAuthModal('register')">Registrarse</button>
+        </div>
+
+        <!-- Login Form -->
+        <div id="loginFormContainer">
+          <form id="loginForm" style="display:flex; flex-direction:column; gap:1rem; margin-top:1rem;">
+            <div class="form-group">
+              <label for="loginEmail">Correo Institucional EFIM</label>
+              <input type="email" id="loginEmail" class="form-control" required placeholder="docente@efim.edu.co" />
+            </div>
+            <div class="form-group">
+              <label for="loginPassword">Contraseña</label>
+              <input type="password" id="loginPassword" class="form-control" required value="123" />
+            </div>
+            <button type="submit" class="btn btn-primary" style="margin-top:0.5rem;">Entrar al Sistema</button>
+          </form>
+        </div>
+
+        <!-- Register Form -->
+        <div id="registerFormContainer" style="display:none;">
+          <form id="registerForm" style="display:flex; flex-direction:column; gap:1rem; margin-top:1rem;">
+            <div class="form-group">
+              <label for="regName">Nombre Completo y Grado / Título Académico</label>
+              <input type="text" id="regName" class="form-control" required placeholder="Ej. Mg. Laura Castillo / Cap. Corbeta" />
+            </div>
+            <div class="form-group">
+              <label for="regEmail">Correo Institucional EFIM</label>
+              <input type="email" id="regEmail" class="form-control" required placeholder="laura.castillo@efim.edu.co" />
+            </div>
+            <div class="form-group">
+              <label for="regPassword">Contraseña</label>
+              <input type="password" id="regPassword" class="form-control" required placeholder="Mínimo 6 caracteres" />
+            </div>
+            <div class="form-row">
+              <div class="form-group">
+                <label for="regRole">Rol Institucional</label>
+                <select id="regRole" class="form-control">
+                  <option value="admin">Decano de Investigación</option>
+                  <option value="employee" selected>Docente Investigador</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label for="regDepartment">Área / Línea Asignada</label>
+                <input type="text" id="regDepartment" class="form-control" placeholder="Ej. 1. Investigación Formativa" />
+              </div>
+            </div>
+            <button type="submit" class="btn btn-primary" style="margin-top:0.5rem;">Crear Cuenta Institucional</button>
+          </form>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ====================================================================
+       7. EMAIL CONFIGURATION & AUDIT OUTBOX MODAL (SMTP)
+       ==================================================================== -->
+  <div id="emailConfigModal" class="modal-overlay">
+    <div class="modal-dialog lg">
+      <div class="modal-header">
+        <div style="display:flex; align-items:center; gap:0.75rem;">
+          <h3 style="margin:0;">✉️ Despacho de Correo Institucional & Servidor SMTP</h3>
+          <span id="smtpStatusBadge" class="badge badge-warning" style="font-size:0.72rem;">🟡 Modo Virtual EFIM</span>
+        </div>
+        <button type="button" class="btn-icon" onclick="EmailModule.closeEmailModal()" title="Cerrar">&times;</button>
+      </div>
+      <div class="modal-body" style="padding-top:1rem;">
+        
+        <!-- Tab Navigation Buttons -->
+        <div style="display:flex; gap:0.5rem; margin-bottom:1.25rem; border-bottom:1px solid var(--border); padding-bottom:0.75rem;">
+          <button type="button" class="btn btn-sm btn-secondary email-modal-tab-btn active" data-tab="config" onclick="EmailModule.switchTab('config')">
+            ⚙️ Configuración SMTP
+          </button>
+          <button type="button" class="btn btn-sm btn-secondary email-modal-tab-btn" data-tab="test" onclick="EmailModule.switchTab('test')">
+            🧪 Probar Envío Directo
+          </button>
+          <button type="button" class="btn btn-sm btn-secondary email-modal-tab-btn" data-tab="history" onclick="EmailModule.switchTab('history')">
+            📬 Bandeja de Salida (Auditoría)
+          </button>
+        </div>
+
+        <!-- TAB 1: SMTP CONFIGURATION -->
+        <div id="tabPane-config" class="email-modal-tab-pane">
+          <div style="background:var(--surface-2); border-left:4px solid #3b82f6; padding:0.85rem 1rem; border-radius:6px; margin-bottom:1rem; font-size:0.85rem; line-height:1.5;">
+            <strong>ℹ️ Configuración de Despacho de Correo Institucional:</strong><br/>
+            Configure aquí las credenciales SMTP de salida para el <strong>Decano</strong> y para el <strong>Gestor</strong>. Ambos pueden tener sus propias cuentas de correo institucional para enviar directrices y asignaciones a los docentes.
+          </div>
+
+          <!-- Account Switcher Pill: Decano vs Gestor -->
+          <div style="display: flex; gap: 0.5rem; margin-bottom: 1rem; background: var(--surface-2); padding: 0.35rem; border-radius: 8px; border: 1px solid var(--border);">
+            <button type="button" id="btnSelectAccountDecano" class="btn btn-sm btn-primary" style="flex: 1; font-weight: 700;" onclick="EmailModule.selectAccount('decano')">
+              🛡️ Cuenta del Decano
+            </button>
+            <button type="button" id="btnSelectAccountGestor" class="btn btn-sm btn-secondary" style="flex: 1; font-weight: 700;" onclick="EmailModule.selectAccount('gestor')">
+              📋 Cuenta del Gestor / Coord.
+            </button>
+          </div>
+
+          <form id="smtpConfigForm" onsubmit="EmailModule.handleSaveConfig(event)">
+            <div class="form-row">
+              <div class="form-group" style="flex:1;">
+                <label for="smtpPresetSelect">Plantilla Rápida de Proveedor</label>
+                <select id="smtpPresetSelect" class="form-control" onchange="EmailModule.handlePresetChange()">
+                  <option value="office365">Microsoft 365 / Outlook (smtp.office365.com)</option>
+                  <option value="gmail">Google Workspace / Gmail (smtp.gmail.com)</option>
+                  <option value="custom">Servidor Institucional Propio / Personalizado</option>
+                </select>
+              </div>
+              <div class="form-group" style="flex:1;">
+                <label for="smtpHostInput">Servidor Saliente (SMTP Host) *</label>
+                <input type="text" id="smtpHostInput" class="form-control" placeholder="ej. smtp.office365.com o mail.esfim.edu.co" />
+              </div>
+            </div>
+
+            <div class="form-row">
+              <div class="form-group">
+                <label for="smtpPortInput">Puerto SMTP</label>
+                <input type="number" id="smtpPortInput" class="form-control" value="587" placeholder="587 o 465" />
+              </div>
+              <div class="form-group">
+                <label for="smtpSecureSelect">Seguridad SSL / TLS</label>
+                <select id="smtpSecureSelect" class="form-control">
+                  <option value="false">STARTTLS (Recomendado Puerto 587)</option>
+                  <option value="true">SSL / TLS Directo (Puerto 465)</option>
+                </select>
+              </div>
+            </div>
+
+            <div class="form-row">
+              <div class="form-group" style="flex:1;">
+                <label for="smtpUserInput" id="smtpUserLabel">Usuario / Correo Institucional *</label>
+                <input type="text" id="smtpUserInput" class="form-control" placeholder="ej. decano@diefi.edu.co" />
+              </div>
+              <div class="form-group" style="flex:1;">
+                <label for="smtpPassInput">Contraseña / Contraseña de Aplicación *</label>
+                <input type="password" id="smtpPassInput" class="form-control" placeholder="Contraseña de correo o app password" />
+              </div>
+            </div>
+
+            <div class="form-row">
+              <div class="form-group" style="flex:1;">
+                <label for="smtpFromAddressInput">Dirección 'De' (Remitente Visible)</label>
+                <input type="text" id="smtpFromAddressInput" class="form-control" placeholder="decano@diefi.edu.co" />
+              </div>
+              <div class="form-group" style="flex:1;">
+                <label for="smtpFromNameInput">Nombre del Remitente</label>
+                <input type="text" id="smtpFromNameInput" class="form-control" value="Decano de Investigación ESFIM" />
+              </div>
+            </div>
+
+            <div style="display:flex; justify-content:flex-end; gap:0.5rem; margin-top:1rem;">
+              <button type="button" class="btn btn-secondary" onclick="EmailModule.switchTab('test')">Ir a Prueba de Envío →</button>
+              <button type="submit" id="btnSaveSmtpConfig" class="btn btn-primary">💾 Guardar Configuración</button>
+            </div>
+          </form>
+        </div>
+
+        <!-- TAB 2: TEST SEND DIRECTLY -->
+        <div id="tabPane-test" class="email-modal-tab-pane" style="display:none;">
+          <p style="font-size:0.9rem; color:var(--text-muted); margin-bottom:1rem;">
+            Envía un correo de prueba con membrete oficial de la <strong>Armada Nacional / EFIM</strong> para verificar que el servidor SMTP autentique y entregue sin rebote.
+          </p>
+
+          <form id="testEmailForm" onsubmit="EmailModule.handleSendTestEmail(event)">
+            <div class="form-row" style="margin-bottom:0.75rem;">
+              <div class="form-group" style="flex:1;">
+                <label for="testEmailAccountSelect">Cuenta Remitente a Probar *</label>
+                <select id="testEmailAccountSelect" class="form-control">
+                  <option value="decano">🛡️ Cuenta del Decano</option>
+                  <option value="gestor">📋 Cuenta del Gestor / Coordinador</option>
+                </select>
+              </div>
+              <div class="form-group" style="flex:1;">
+                <label for="testEmailRecipientInput">Correo del Destinatario para la Prueba *</label>
+                <input type="email" id="testEmailRecipientInput" class="form-control" value="jeison.tapia@esfim.edu.co" required placeholder="correo@esfim.edu.co" />
+              </div>
+            </div>
+              <small style="color:var(--text-muted); font-size:0.75rem; margin-top:0.25rem; display:block;">
+                Por defecto configurado al docente Jeison Tapia (<code>jeison.tapia@esfim.edu.co</code>).
+              </small>
+            </div>
+
+            <div id="testEmailResult" style="display:none; padding:1rem; border-radius:6px; margin:1rem 0; font-size:0.85rem;"></div>
+
+            <div style="display:flex; justify-content:flex-end; gap:0.5rem; margin-top:1rem;">
+              <button type="submit" id="btnSendTestEmail" class="btn btn-primary" style="padding:0.6rem 1.25rem;">
+                ✉️ Enviar Correo de Prueba
+              </button>
+            </div>
+          </form>
+        </div>
+
+        <!-- TAB 3: HISTORY AUDIT -->
+        <div id="tabPane-history" class="email-modal-tab-pane" style="display:none;">
+          <div id="emailHistoryContainer"></div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <!-- 9. MODAL: CONFIRMAR ELIMINACIÓN DE TAREA (OPTIMIZAR BD) -->
+  <div id="confirmDeleteTaskModal" class="modal-overlay">
+    <div class="modal-dialog sm">
+      <div class="modal-header">
+        <h3 style="color:#ef4444; display:flex; align-items:center; gap:0.5rem; margin:0;">
+          🗑️ Eliminar Compromiso Cumplido
+        </h3>
+        <button type="button" class="btn-icon btn-modal-cancel">&times;</button>
+      </div>
+      <div class="modal-body">
+        <input type="hidden" id="confirmDeleteTaskId" />
+        <p style="font-size:0.9rem; color:var(--text-main); margin-bottom:0.75rem;">
+          ¿Desea eliminar de forma permanente la tarea cumplida <strong id="confirmDeleteTaskTitle" style="color:var(--primary);"></strong>?
+        </p>
+        <div style="background:rgba(239,68,68,0.08); border-left:4px solid #ef4444; padding:0.75rem; border-radius:6px; font-size:0.8rem; color:var(--text-main);">
+          ⚡ <strong>Optimización de Cuota:</strong> Esta acción elimina el documento y comentarios de MongoDB Atlas, liberando almacenamiento en la base de datos gratuita.
+        </div>
+      </div>
+      <div class="modal-footer" style="display:flex; justify-content:flex-end; gap:0.5rem;">
+        <button type="button" class="btn btn-secondary btn-modal-cancel">Cancelar</button>
+        <button type="button" class="btn btn-danger" onclick="AdminModule.executeDeleteTask(document.getElementById('confirmDeleteTaskId').value)">
+          ✓ Sí, Eliminar de MongoDB
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 10. MODAL: DEPURAR / LIMPIAR TAREAS CUMPLIDAS (OPTIMIZAR BD) -->
+  <div id="purgeCompletedModal" class="modal-overlay">
+    <div class="modal-dialog">
+      <div class="modal-header">
+        <h3 style="display:flex; align-items:center; gap:0.5rem; margin:0;">
+          🧹 Depuración de Compromisos Cumplidos
+        </h3>
+        <button type="button" class="btn-icon btn-modal-cancel">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div style="text-align:center; padding:1rem 0;">
+          <div style="font-size:2.5rem; margin-bottom:0.5rem;">🗄️</div>
+          <h4 style="margin:0 0 0.25rem 0;">Optimización de Almacenamiento MongoDB</h4>
+          <p style="color:var(--text-muted); font-size:0.85rem; margin:0;">
+            Actualmente hay <strong id="purgeCompletedCount" style="color:var(--success);">0 compromisos cumplidos</strong> en el sistema.
+          </p>
+        </div>
+
+        <div style="display:flex; flex-direction:column; gap:0.75rem; margin-top:0.75rem;">
+          <div style="background:var(--bg-surface); border:1px solid var(--border-subtle); padding:1rem; border-radius:8px;">
+            <strong style="color:var(--danger); font-size:0.9rem; display:flex; align-items:center; gap:0.4rem;">
+              🗑️ Eliminación Definitiva en MongoDB Atlas
+            </strong>
+            <p style="font-size:0.8rem; color:var(--text-muted); margin:0.35rem 0 0.75rem 0;">
+              Borra completamente las tareas cumplidas y archivadas de MongoDB. Garantiza que la cuota gratuita (M0) no se sature con compromisos ya concluidos.
+            </p>
+            <button type="button" class="btn btn-sm btn-danger" onclick="AdminModule.executePurgeCompleted()" style="width:100%;">
+              🧹 Eliminar Todas las Cumplidas de MongoDB
+            </button>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary btn-modal-cancel">Cerrar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 11. MODAL: MI PERFIL Y CREDENCIALES DE ACCESO -->
+  <div id="profileModal" class="modal-overlay">
+    <div class="modal-dialog">
+      <div class="modal-header">
+        <h3 style="display:flex; align-items:center; gap:0.5rem; margin:0;">
+          🛡️ Credenciales y Perfil Institucional
+        </h3>
+        <button type="button" class="btn-icon btn-modal-cancel">&times;</button>
+      </div>
+      <form id="profileForm" onsubmit="App.handleProfileSubmit(event)">
+        <div class="modal-body">
+          <div style="background:var(--bg-surface); border:1px solid var(--border-subtle); padding:0.85rem; border-radius:8px; margin-bottom:1rem; font-size:0.85rem;">
+            ℹ️ <strong>Perfil Institucional del Miembro:</strong> Aquí cada miembro (Decano, Gestor o Docente Investigador) puede <strong>subir su foto de avatar</strong>, actualizar su nombre y correo institucional, y cambiar su contraseña de acceso. Tu foto se reflejará de inmediato en todo el sistema.
+          </div>
+
+          <!-- Selector de Foto / Avatar Oficial del Miembro -->
+          <div class="avatar-upload-card" style="display:flex; align-items:center; gap:1.25rem; padding:0.9rem 1rem; background:var(--bg-surface-elevated); border:1px solid var(--border-subtle); border-radius:12px; margin-bottom:1.15rem;">
+            <div class="avatar-preview-wrap" onclick="document.getElementById('profilePhotoInput').click()" style="position:relative; width:68px; height:68px; border-radius:50%; cursor:pointer; flex-shrink:0;" title="Clic para seleccionar foto de perfil">
+              <div id="profileAvatarPreview" class="user-avatar" style="width:68px; height:68px; font-size:1.4rem; font-weight:800; border:2.5px solid var(--primary); box-shadow:0 4px 12px var(--primary-glow); background-size:cover; background-position:center;">DI</div>
+              <div style="position:absolute; bottom:-2px; right:-2px; width:24px; height:24px; background:var(--primary); color:#fff; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:0.75rem; border:2px solid var(--bg-surface); box-shadow:0 2px 4px rgba(0,0,0,0.3);">📷</div>
+            </div>
+            <div style="flex:1; min-width:0;">
+              <strong style="display:block; font-size:0.88rem; color:var(--text-main); margin-bottom:0.2rem;">Foto de Perfil del Miembro</strong>
+              <span style="display:block; font-size:0.75rem; color:var(--text-muted); margin-bottom:0.5rem;">Sube una foto personal o institucional (JPG, PNG o WebP). Se adaptará en el avatar del sistema.</span>
+              <div style="display:flex; gap:0.5rem; flex-wrap:wrap; align-items:center;">
+                <button type="button" class="btn btn-secondary" onclick="document.getElementById('profilePhotoInput').click()" style="padding:0.3rem 0.75rem; font-size:0.78rem;">
+                  📁 Subir Foto
+                </button>
+                <button type="button" class="btn-text-sm" id="btnRemoveProfilePhoto" onclick="App.removeProfilePhoto()" style="color:#ef4444; font-size:0.75rem; display:none;">
+                  🗑️ Quitar Foto
+                </button>
+              </div>
+              <input type="file" id="profilePhotoInput" accept="image/png, image/jpeg, image/webp" style="display:none;" onchange="App.handlePhotoSelected(event)" />
+            </div>
+          </div>
+
+          <!-- Controles interactivos de encuadre y ajuste del rostro -->
+          <div id="avatarCropControls" style="display:none; margin-bottom:1.15rem; padding:0.75rem 0.9rem; background:var(--bg-surface); border:1px solid var(--border-subtle); border-radius:10px;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.6rem; flex-wrap:wrap; gap:0.5rem;">
+              <strong style="font-size:0.8rem; color:var(--text-main); display:flex; align-items:center; gap:0.3rem;">
+                📐 Encuadre de la Foto:
+              </strong>
+              <div style="display:flex; gap:0.35rem;">
+                <button type="button" class="btn btn-sm btn-secondary crop-mode-btn active" id="btnCropFace" onclick="App.setCropMode('smart')" style="font-size:0.72rem; padding:0.25rem 0.6rem;">
+                  👤 Rostro
+                </button>
+                <button type="button" class="btn btn-sm btn-secondary crop-mode-btn" id="btnCropCenter" onclick="App.setCropMode('center')" style="font-size:0.72rem; padding:0.25rem 0.6rem;">
+                  🎯 Centro
+                </button>
+                <button type="button" class="btn btn-sm btn-secondary crop-mode-btn" id="btnCropFit" onclick="App.setCropMode('fit')" style="font-size:0.72rem; padding:0.25rem 0.6rem;">
+                  🖼️ Ver Completa
+                </button>
+              </div>
+            </div>
+            <div id="avatarSliderRow" style="display:flex; align-items:center; gap:0.6rem;">
+              <span style="font-size:0.72rem; color:var(--text-muted); min-width:85px;">Ajustar Altura:</span>
+              <input type="range" id="avatarPositionSlider" min="0" max="100" value="15" style="flex:1; cursor:pointer;" oninput="App.handlePositionSlider(this.value)" />
+              <span style="font-size:0.72rem; font-family:var(--font-mono); color:var(--text-muted); min-width:40px; text-align:right;" id="avatarSliderVal">15%</span>
+            </div>
+            <small style="display:block; font-size:0.7rem; color:var(--text-muted); margin-top:0.35rem;">
+              💡 <em>Usa «👤 Rostro» o desliza la barra para centrar tu rostro perfectamente dentro del círculo. O usa «🖼️ Ver Completa» para encajar toda la imagen sin recortar nada.</em>
+            </small>
+          </div>
+
+          <div class="form-group" style="margin-bottom:0.85rem;">
+            <label for="profileNameInput"><strong>Nombre Completo y Cargo:</strong></label>
+            <input type="text" id="profileNameInput" class="form-control" required placeholder="Ej: TF. Nombre Apellido - Decano de Investigación" />
+          </div>
+
+          <div class="form-group" style="margin-bottom:0.85rem;">
+            <label for="profileEmailInput"><strong>Correo Institucional Oficial (Login y Notificaciones):</strong></label>
+            <input type="email" id="profileEmailInput" class="form-control" required placeholder="correo.institucional@armada.mil.co" />
+            <small style="color:var(--text-muted); font-size:0.75rem;">Este correo se usará para iniciar sesión y para recibir las alertas del sistema.</small>
+          </div>
+
+          <div class="form-group" style="margin-bottom:0.85rem;">
+            <label for="profileRoleDisplay"><strong>Rol Asignado:</strong></label>
+            <input type="text" id="profileRoleDisplay" class="form-control" disabled style="opacity:0.75;" />
+          </div>
+
+          <hr style="border:0; border-top:1px solid var(--border-subtle); margin:1.25rem 0;" />
+
+          <h4 style="margin:0 0 0.5rem 0; font-size:0.9rem; color:var(--text-main);">🔑 Cambiar Contraseña de Acceso (Opcional):</h4>
+          <div class="form-group" style="margin-bottom:0.85rem;">
+            <label for="profileNewPassInput">Nueva Contraseña:</label>
+            <input type="password" id="profileNewPassInput" class="form-control" placeholder="Dejar en blanco para mantener la contraseña actual" minlength="6" />
+          </div>
+
+          <div class="form-group" style="margin-bottom:0.5rem;">
+            <label for="profileConfirmPassInput">Confirmar Nueva Contraseña:</label>
+            <input type="password" id="profileConfirmPassInput" class="form-control" placeholder="Repita la nueva contraseña" minlength="6" />
+          </div>
+        </div>
+        <div class="modal-footer" style="display:flex; justify-content:flex-end; gap:0.5rem;">
+          <button type="button" class="btn btn-secondary btn-modal-cancel">Cancelar</button>
+          <button type="submit" id="btnSaveProfile" class="btn btn-primary">
+            💾 Guardar Credenciales
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- 12. MODAL: DESCARGAR E INSTALAR APLICATIVO (PWA) -->
+  <div id="pwaModal" class="modal-overlay">
+    <div class="modal-dialog" style="max-width: 500px;">
+      <div class="modal-header">
+        <h3 style="display:flex; align-items:center; gap:0.5rem; margin:0;">
+          📲 Instalar Aplicativo en Dispositivo
+        </h3>
+        <button type="button" class="btn-icon btn-modal-cancel" onclick="App.closePwaModal()">&times;</button>
+      </div>
+      <div class="modal-body" style="gap:1rem;">
+        <div style="text-align: center; padding: 0.5rem 0;">
+          <img src="/img/logo.png" alt="Decanatura de Investigación ESFIM" style="width: 88px; height: 88px; object-fit: contain; filter: drop-shadow(0 4px 16px rgba(0,0,0,0.3)); margin-bottom: 0.75rem;" />
+          <h4 style="margin: 0 0 0.35rem 0; font-size: 1.15rem; color: var(--text-main); font-weight: 800;">
+            Decanatura de Investigación ESFIM
+          </h4>
+          <p style="font-size: 0.85rem; color: var(--text-muted); margin: 0; line-height: 1.45;">
+            Sistema de Mando y Seguimiento de Tareas. Instálalo para usarlo a pantalla completa, sin barras del navegador y con acceso instantáneo.
+          </p>
+        </div>
+
+        <!-- Sección de Instalación Directa (Chrome / Android / Edge / Desktop) -->
+        <div id="pwaNativeSection" style="padding: 1rem; background: var(--bg-surface); border: 1px solid var(--border-strong); border-radius: var(--radius-md); text-align: center;">
+          <p style="font-size: 0.88rem; font-weight: 600; color: var(--text-main); margin-bottom: 0.85rem;">
+            Tu dispositivo es compatible con instalación directa en 1 clic:
+          </p>
+          <button type="button" class="btn btn-primary" onclick="App.executePwaPrompt()" style="width: 100%; justify-content: center; padding: 0.85rem; font-size: 0.95rem;">
+            📥 Descargar e Instalar Ahora
+          </button>
+        </div>
+
+        <!-- Instrucciones para iPhone / iPad (Safari) -->
+        <div id="pwaIosSection" style="padding: 1rem; background: var(--bg-surface); border: 1px solid var(--border-strong); border-radius: var(--radius-md); display: flex; flex-direction: column; gap: 0.6rem;">
+          <h5 style="color: var(--primary); display: flex; align-items: center; gap: 0.4rem; margin: 0; font-size: 0.92rem;">
+            🍎 Instalación en iPhone / iPad (Safari):
+          </h5>
+          <ol style="font-size: 0.82rem; color: var(--text-main); padding-left: 1.3rem; line-height: 1.6; margin: 0;">
+            <li>Pulsa el botón <strong>Compartir</strong> (icono <span style="display:inline-block; font-size:1.1rem; vertical-align:middle;">⎋</span> en la barra inferior de Safari).</li>
+            <li>Desliza la lista de opciones y pulsa <strong>"Añadir a pantalla de inicio"</strong>.</li>
+            <li>Confirma pulsando <strong>"Añadir"</strong> en la parte superior derecha.</li>
+          </ol>
+        </div>
+
+        <!-- Indicaciones para PC / Desktop -->
+        <div id="pwaDesktopSection" style="padding: 0.85rem 1rem; background: rgba(59,130,246,0.06); border: 1px dashed rgba(59,130,246,0.3); border-radius: var(--radius-md); font-size: 0.8rem; color: var(--text-muted); line-height: 1.45;">
+          💡 <strong>En computadores (Chrome / Edge / Opera):</strong> También puedes hacer clic en el icono de instalación que aparece en el extremo derecho de la barra de direcciones del navegador.
+        </div>
+      </div>
+      <div class="modal-footer" style="display:flex; justify-content:flex-end;">
+        <button type="button" class="btn btn-secondary" onclick="App.closePwaModal()">Cerrar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Input invisible global para cambiar foto de cualquier docente con 1 clic -->
+  <input type="file" id="globalDocentePhotoInput" accept="image/png, image/jpeg, image/webp" style="display:none;" onchange="AdminModule.handleDirectDocentePhotoSelected(event)" />
+  <!-- Input invisible para que cada miembro cambie su avatar de inmediato con 1 clic -->
+  <input type="file" id="directProfilePhotoInput" accept="image/png, image/jpeg, image/webp" style="display:none;" onchange="App.handleDirectProfilePhoto(event)" />
+
+  <!-- Scripts -->
+  <script src="js/store.js"></script>
+  <script src="js/alerts.js"></script>
+  <script src="js/auth.js"></script>
+  <script src="js/email.js"></script>
+  <script src="js/admin.js"></script>
+  <script src="js/employee.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>

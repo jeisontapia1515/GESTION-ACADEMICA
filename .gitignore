@@ -1,0 +1,24 @@
+# Node dependencies
+node_modules/
+
+# Environment and sensitive keys
+.env
+.env.local
+.env.*.local
+
+# Sensitive SMTP email configuration
+data/email_config.json
+
+# Logs and runtime files
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+*.log
+
+# Scratch & temporary testing files
+scratch_*.js
+*.tmp
+
+# Operating system files
+.DS_Store
+Thumbs.db
