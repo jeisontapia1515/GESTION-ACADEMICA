@@ -443,16 +443,36 @@ class AppStore {
       }
     }
 
-    // Create notifications for assigned employee(s)
+    // Notificaciones para los docentes asignados y para la Decanatura (Gestor/Decano)
     const targetUserIds = Array.isArray(newTask.assignedTo) ? newTask.assignedTo : [newTask.assignedTo].filter(Boolean);
+    const areaName = window.DECANATURA_AREAS && newTask.area ? window.DECANATURA_AREAS[newTask.area]?.name : 'Investigación';
+    const dueDateStr = new Date(newTask.dueDate).toLocaleString('es-CO');
+
     targetUserIds.forEach(uId => {
       this.addNotification({
         targetUserId: uId,
-        title: 'Nueva Tarea Asignada',
-        message: `Jefatura ha asignado el compromiso: "${newTask.title}" con fecha límite ${new Date(newTask.dueDate).toLocaleString('es-CO')}.`,
+        targetRole: 'employee',
+        title: '📋 Nuevo Compromiso Asignado',
+        message: `Jefatura le ha asignado la tarea "${newTask.title}" (${areaName}) con fecha límite ${dueDateStr}.`,
         type: 'info',
         taskId: newTask.id
       });
+    });
+
+    const isPlenary = newTask.area === 'decanatura' || targetUserIds.length > 2;
+    const namesList = targetUserIds.map(id => {
+      const u = this.getUserById(id);
+      return u ? u.name : id;
+    }).join(', ');
+
+    // Notificación de compromiso delegado para Decanatura
+    this.addNotification({
+      targetUserId: 'admin',
+      targetRole: 'admin',
+      title: isPlenary ? '🏛️ Tarea Plenaria de Decanatura Delegada' : '📋 Tarea Delegada',
+      message: `Se delegó el compromiso "${newTask.title}" (${areaName}) a: ${namesList || 'docentes seleccionados'}. Plazo: ${dueDateStr}.`,
+      type: isPlenary ? 'warning' : 'info',
+      taskId: newTask.id
     });
 
     return newTask;
@@ -534,17 +554,25 @@ class AppStore {
 
     const updated = this.updateTask(taskId, updates);
 
-    // If completed or significant milestone, notify admins
+    // Notificar a Decanatura ante cada actualización de avance realizada
+    const userName = currentUser ? currentUser.name : 'Un docente';
     if (newProgress === 100) {
-      const admins = this.getUsers().filter(u => u.role === 'admin');
-      admins.forEach(admin => {
-        this.addNotification({
-          targetUserId: admin.id,
-          title: '✅ Tarea Cumplida al 100%',
-          message: `${currentUser ? currentUser.name : 'El empleado'} ha reportado el cumplimiento del 100% en: "${task.title}".`,
-          type: 'success',
-          taskId: task.id
-        });
+      this.addNotification({
+        targetUserId: 'admin',
+        targetRole: 'admin',
+        title: '✅ Compromiso Cumplido al 100%',
+        message: `${userName} ha reportado el cumplimiento del 100% en: "${task.title}".`,
+        type: 'success',
+        taskId: task.id
+      });
+    } else if (newProgress !== prevProgress || progressNote) {
+      this.addNotification({
+        targetUserId: 'admin',
+        targetRole: 'admin',
+        title: `📈 Avance Registrado: ${newProgress}%`,
+        message: `${userName} registró un avance del ${newProgress}% en "${task.title}"${progressNote ? `: "${progressNote}"` : '.'}`,
+        type: 'info',
+        taskId: task.id
       });
     }
 
@@ -559,7 +587,7 @@ class AppStore {
     const currentUser = this.getCurrentUser();
     const newComment = {
       id: 'c-' + Date.now(),
-      authorId: currentUser ? currentUser.id : 'unknown',
+      authorId: currentUser ? (currentUser.id || currentUser._id) : 'unknown',
       authorName: currentUser ? currentUser.name : 'Usuario',
       text: commentText,
       timestamp: new Date().toISOString(),
@@ -571,13 +599,37 @@ class AppStore {
 
     this.updateTask(taskId, { comments: task.comments });
 
-    // If type is reminder, send targeted notification
+    // Si es recordatorio emitido por la Jefatura
     if (type === 'reminder') {
+      const targetUserIds = Array.isArray(task.assignedTo) ? task.assignedTo : [task.assignedTo].filter(Boolean);
+      targetUserIds.forEach(uId => {
+        this.addNotification({
+          targetUserId: uId,
+          targetRole: 'employee',
+          title: '⚠️ Recordatorio Oficial de Jefatura',
+          message: `La Decanatura le recuerda sobre "${task.title}": "${commentText}"`,
+          type: 'warning',
+          taskId: task.id
+        });
+      });
+      // Registro para el panel de Decano / Gestor
       this.addNotification({
-        targetUserId: task.assignedTo,
-        title: '⚠️ Recordatorio de Jefatura',
-        message: `El Administrador ha enviado un recordatorio para: "${task.title}": "${commentText}"`,
+        targetUserId: 'admin',
+        targetRole: 'admin',
+        title: '⏰ Recordatorio Despachado',
+        message: `Se emitió recordatorio para "${task.title}": "${commentText}"`,
         type: 'warning',
+        taskId: task.id
+      });
+    } else if (type === 'general' && commentText) {
+      // Notificar a la contraparte
+      const isAdmin = currentUser && currentUser.role === 'admin';
+      this.addNotification({
+        targetUserId: isAdmin ? (task.assignedTo || 'all') : 'admin',
+        targetRole: isAdmin ? 'employee' : 'admin',
+        title: `💬 Observación en "${task.title}"`,
+        message: `${currentUser ? currentUser.name : 'Usuario'}: "${commentText.substring(0, 100)}"`,
+        type: 'info',
         taskId: task.id
       });
     }
@@ -675,38 +727,101 @@ class AppStore {
     return updated;
   }
 
+  // Sincronización de notificaciones con el servidor institucional
+  async syncNotificationsFromServer() {
+    const token = this.getToken();
+    if (!token) return this.getNotifications();
+    try {
+      const res = await fetch('/api/notifications', {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      const data = await res.json();
+      if (data.success && Array.isArray(data.notifications)) {
+        localStorage.setItem(STORAGE_KEYS.NOTIFICATIONS, JSON.stringify(data.notifications));
+        if (window.App && window.App.updateNotificationBadge) {
+          window.App.updateNotificationBadge();
+        }
+        return data.notifications;
+      }
+    } catch (e) {
+      console.warn('No se pudieron sincronizar notificaciones del servidor:', e);
+    }
+    return this.getNotifications();
+  }
+
   // Notifications
   getNotifications(userId) {
     const data = localStorage.getItem(STORAGE_KEYS.NOTIFICATIONS);
     const list = data ? JSON.parse(data) : [];
-    if (!userId) return list;
-    return list.filter(n => n.targetUserId === userId || n.targetUserId === 'all' || (Array.isArray(n.targetUserId) && n.targetUserId.includes(userId)));
+    const currentUser = this.getCurrentUser();
+    const isAdmin = currentUser && currentUser.role === 'admin';
+    const targetId = String(userId || (currentUser ? (currentUser.id || currentUser._id) : '')).toLowerCase().trim();
+    const targetEmail = currentUser && currentUser.email ? currentUser.email.toLowerCase().trim() : '';
+
+    if (!targetId && !isAdmin) return list;
+
+    return list.filter(n => {
+      // El Decano y el Gestor ven todas las notificaciones institucionales de tareas delegadas y actividades de Decanatura
+      if (isAdmin) {
+        return true;
+      }
+
+      const notifTarget = String(n.targetUserId || '').toLowerCase().trim();
+      const notifRole = String(n.targetRole || '').toLowerCase().trim();
+
+      if (notifTarget === 'all' || notifRole === 'all' || notifRole === 'employee') return true;
+      if (notifTarget === targetId || (targetEmail && notifTarget === targetEmail)) return true;
+      if (Array.isArray(n.targetUserId) && n.targetUserId.some(id => String(id).toLowerCase().trim() === targetId || (targetEmail && String(id).toLowerCase().trim() === targetEmail))) return true;
+      if (Array.isArray(n.targetUserIds) && n.targetUserIds.some(id => String(id).toLowerCase().trim() === targetId || (targetEmail && String(id).toLowerCase().trim() === targetEmail))) return true;
+      return false;
+    });
   }
 
   addNotification(notif) {
     const data = localStorage.getItem(STORAGE_KEYS.NOTIFICATIONS);
     const list = data ? JSON.parse(data) : [];
     const newNotif = {
-      id: 'notif-' + Date.now(),
+      id: 'notif-' + Date.now() + '-' + Math.random().toString(36).substring(2, 6),
       timestamp: new Date().toISOString(),
       read: false,
       ...notif
     };
     list.unshift(newNotif);
-    localStorage.setItem(STORAGE_KEYS.NOTIFICATIONS, JSON.stringify(list.slice(0, 50)));
+    localStorage.setItem(STORAGE_KEYS.NOTIFICATIONS, JSON.stringify(list.slice(0, 100)));
+
+    // Persistir en servidor backend en segundo plano
+    const token = this.getToken();
+    if (token) {
+      fetch('/api/notifications', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify(newNotif)
+      }).catch(e => console.warn('Error persistiendo notificacion en servidor:', e));
+    }
+
+    if (window.App && window.App.updateNotificationBadge) {
+      window.App.updateNotificationBadge();
+    }
+
     return newNotif;
   }
 
   markNotificationsAsRead(userId) {
     const data = localStorage.getItem(STORAGE_KEYS.NOTIFICATIONS);
     let list = data ? JSON.parse(data) : [];
-    list = list.map(n => {
-      if (!userId || n.targetUserId === userId || n.targetUserId === 'all' || (Array.isArray(n.targetUserId) && n.targetUserId.includes(userId))) {
-        return { ...n, read: true };
-      }
-      return n;
-    });
+    list = list.map(n => ({ ...n, read: true }));
     localStorage.setItem(STORAGE_KEYS.NOTIFICATIONS, JSON.stringify(list));
+
+    const token = this.getToken();
+    if (token) {
+      fetch('/api/notifications/read-all', {
+        method: 'PUT',
+        headers: { 'Authorization': `Bearer ${token}` }
+      }).catch(e => console.warn('Error marcando leidas en servidor:', e));
+    }
   }
 
   markNotificationAsRead(notifId) {
@@ -719,6 +834,14 @@ class AppStore {
       return n;
     });
     localStorage.setItem(STORAGE_KEYS.NOTIFICATIONS, JSON.stringify(list));
+
+    const token = this.getToken();
+    if (token && notifId) {
+      fetch(`/api/notifications/${notifId}/read`, {
+        method: 'PUT',
+        headers: { 'Authorization': `Bearer ${token}` }
+      }).catch(e => console.warn('Error marcando leida en servidor:', e));
+    }
   }
 }
 

@@ -352,48 +352,8 @@ const EmailModule = {
   // AUTOMATED NOTIFICATION DISPATCHERS
   // =========================================================================
 
-  // Dispatches email sequentially to multiple docentes to avoid Microsoft 365 throttling
-  async notifyTaskAssignmentMulti(task, docentes) {
-    if (!Array.isArray(docentes)) docentes = [docentes].filter(Boolean);
-    if (docentes.length === 0) return [];
-
-    const results = [];
-    for (let i = 0; i < docentes.length; i++) {
-      const doc = docentes[i];
-      const res = await this.notifyTaskAssignment(task, doc, docentes.length === 1);
-      results.push(res);
-      if (i < docentes.length - 1) {
-        await new Promise(resolve => setTimeout(resolve, 600));
-      }
-    }
-
-    const successful = results.filter(r => r && (r.status === 'sent_smtp' || r.success));
-    const namesOrEmails = docentes.map(d => d.name || d.email).join(', ');
-
-    if (docentes.length > 1) {
-      if (successful.length > 0) {
-        AlertsEngine.showToast(
-          'Despacho de Correos Completado',
-          `📧 Se transmitieron notificaciones por correo a los docentes asignados (${namesOrEmails}).`,
-          'success',
-          8000
-        );
-      } else {
-        AlertsEngine.showToast(
-          'Notificaciones Registradas',
-          `Registradas para ${docentes.length} docentes en el buzón institucional ESFIM.`,
-          'info',
-          6000
-        );
-      }
-    }
-    return results;
-  },
-
-  // Dispatches email when Decano assigns a new academic task
-  async notifyTaskAssignment(task, docente, showToast = true) {
-    if (!docente || !docente.email) return null;
-
+  // Construye el HTML y texto formal del correo para asignación de tareas
+  buildTaskEmailContent(task, docente) {
     const areaObj = window.DECANATURA_AREAS && task.area ? window.DECANATURA_AREAS[task.area] : null;
     const areaName = areaObj ? areaObj.name : 'Investigación ESFIM';
     const dueDateFormatted = new Date(task.dueDate).toLocaleString('es-CO', {
@@ -416,7 +376,7 @@ const EmailModule = {
       `
       : '';
 
-    const htmlBody = `
+    const html = `
       <!DOCTYPE html>
       <html>
       <head>
@@ -493,7 +453,7 @@ const EmailModule = {
       </html>
     `;
 
-    const textBody = `
+    const text = `
 ARMADA NACIONAL DE COLOMBIA - ESCUELA DE FORMACIÓN DE INFANTERÍA DE MARINA (ESFIM)
 Decanatura de Investigación - Notificación Oficial de Tarea Delegada
 
@@ -509,16 +469,93 @@ Por directriz de la Jefatura se le ha asignado la siguiente tarea:
 Favor acceder a la plataforma institucional en http://localhost:3000/ para reportar su avance.
     `.trim();
 
+    return { areaName, dueDateFormatted, html, text };
+  },
+
+  // Despacha notificaciones a múltiples docentes mediante /api/send-email-batch
+  async notifyTaskAssignmentMulti(task, docentes) {
+    if (!Array.isArray(docentes)) docentes = [docentes].filter(Boolean);
+    if (docentes.length === 0) return [];
+
+    const validDocentes = docentes.filter(d => d && d.email && d.email.includes('@'));
+    if (validDocentes.length === 0) return [];
+
+    const namesOrEmails = validDocentes.map(d => d.name || d.email).join(', ');
+    const recipients = validDocentes.map(doc => {
+      const content = this.buildTaskEmailContent(task, doc);
+      return {
+        to: doc.email.trim(),
+        toName: doc.name || doc.email,
+        subject: `⚓ [ESFIM ${content.areaName}] ${task.title}`,
+        html: content.html,
+        text: content.text
+      };
+    });
+
+    try {
+      const res = await fetch('/api/send-email-batch', {
+        method: 'POST',
+        headers: this.getHeaders(),
+        body: JSON.stringify({
+          recipients,
+          type: 'task_assignment',
+          metadata: { taskId: task.id, area: task.area, priority: task.priority }
+        })
+      });
+      const data = await res.json();
+
+      if (data.success) {
+        const sentCount = data.sentCount || 0;
+        if (sentCount > 0) {
+          AlertsEngine.showToast(
+            'Despacho de Correos Completado',
+            `📧 Se transmitieron exitosamente ${sentCount} de ${recipients.length} notificaciones vía SMTP a los docentes asignados (${namesOrEmails}).`,
+            'success',
+            8000
+          );
+        } else {
+          AlertsEngine.showToast(
+            'Notificaciones Registradas',
+            `Registradas para ${recipients.length} docentes en el buzón institucional ESFIM.`,
+            'info',
+            6000
+          );
+        }
+        return data.results || [];
+      }
+    } catch (e) {
+      console.warn('Error en despacho por lote, reintentando secuencialmente:', e);
+    }
+
+    // Fallback secuencial si falla el lote
+    const results = [];
+    for (let i = 0; i < validDocentes.length; i++) {
+      const doc = validDocentes[i];
+      const r = await this.notifyTaskAssignment(task, doc, false);
+      results.push(r);
+      if (i < validDocentes.length - 1) {
+        await new Promise(resolve => setTimeout(resolve, 800));
+      }
+    }
+    return results;
+  },
+
+  // Dispatches email when Decano assigns a new academic task
+  async notifyTaskAssignment(task, docente, showToast = true) {
+    if (!docente || !docente.email) return null;
+
+    const { areaName, html, text } = this.buildTaskEmailContent(task, docente);
+
     try {
       const res = await fetch('/api/send-email', {
         method: 'POST',
         headers: this.getHeaders(),
         body: JSON.stringify({
-          to: docente.email,
-          toName: docente.name,
+          to: docente.email.trim(),
+          toName: docente.name || docente.email,
           subject: `⚓ [ESFIM ${areaName}] ${task.title}`,
-          html: htmlBody,
-          text: textBody,
+          html,
+          text,
           type: 'task_assignment',
           metadata: { taskId: task.id, area: task.area, priority: task.priority }
         })

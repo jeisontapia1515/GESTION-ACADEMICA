@@ -12,6 +12,9 @@ const App = {
     Auth.init();
     await this.syncUsersFromServer();
     await window.appStore.syncTasksFromServer();
+    if (window.appStore.syncNotificationsFromServer) {
+      await window.appStore.syncNotificationsFromServer();
+    }
     if (window.EmailModule) EmailModule.init();
     this.refreshCurrentView();
     this.updateNotificationBadge();
@@ -40,15 +43,18 @@ const App = {
     if (!user) return;
     try {
       const changed = await window.appStore.checkAndSyncIfOutdated();
+      if (window.appStore.syncNotificationsFromServer) {
+        await window.appStore.syncNotificationsFromServer();
+      }
       if (changed) {
         // Only refresh view if no form input is currently focused to avoid interrupting user typing
         const activeEl = document.activeElement;
         const isTyping = activeEl && (activeEl.tagName === 'INPUT' || activeEl.tagName === 'TEXTAREA');
         if (!isTyping) {
           this.refreshCurrentView();
-          this.updateNotificationBadge();
         }
       }
+      this.updateNotificationBadge();
     } catch (e) {
       console.warn('Error comprobando actualizaciones en vivo:', e);
     }

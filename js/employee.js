@@ -352,6 +352,20 @@ const EmployeeModule = {
 
       window.appStore.updateTask(taskId, updates);
       
+      const currentUser = window.appStore.getCurrentUser();
+      const userName = currentUser ? currentUser.name : 'Un docente';
+
+      if (completed) {
+        window.appStore.addNotification({
+          targetUserId: 'admin',
+          targetRole: 'admin',
+          title: progress === 100 ? '✅ Tarea Completada al 100%' : '☑️ Entregable Cumplido',
+          message: `${userName} completó el entregable "${item.text}" en "${task.title}" (Progreso: ${progress}%).`,
+          type: progress === 100 ? 'success' : 'info',
+          taskId: task.id
+        });
+      }
+
       if (progress === 100) {
         AlertsEngine.showToast('¡Tarea Completada!', 'Has completado todos los entregables requeridos.', 'success');
       }

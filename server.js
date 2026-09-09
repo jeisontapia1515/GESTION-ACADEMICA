@@ -15,10 +15,11 @@ app.use("/img", express.static(path.join(__dirname, "img")));
 app.use("/fonts", express.static(path.join(__dirname, "fonts")));
 app.use("/assets", express.static(path.join(__dirname, "assets")));
 
-app.use("/api/auth",  require("./routes/auth"));
-app.use("/api/users", require("./routes/users"));
-app.use("/api/tasks", require("./routes/tasks"));
-app.use("/api",       require("./routes/email"));
+app.use("/api/auth",          require("./routes/auth"));
+app.use("/api/users",         require("./routes/users"));
+app.use("/api/tasks",         require("./routes/tasks"));
+app.use("/api/notifications", require("./routes/notifications"));
+app.use("/api",               require("./routes/email"));
 
 // PWA Manifest and Service Worker
 app.get(["/manifest.json", "/manifest.webmanifest"], (req, res) => {
@@ -65,32 +66,49 @@ function startServer() {
 
 async function seedInitialData() {
   const User = require("./models/User");
-  const count = await User.countDocuments();
-  if (count > 0) { console.log(count + " usuarios en BD."); return; }
-  const admins = [
-    {
-      name: "Juan Perdomo",
-      email: "juan.perdomo@esfim.edu.co",
-      password: process.env.INITIAL_ADMIN_PASSWORD || "decanatura2026*",
-      role: "admin",
-      department: "Decanatura de Investigación - ESFIM",
-      avatar: "JP"
-    },
-    {
-      name: "Eduardo Puello",
-      email: "eduardo.puello@esfim.edu.co",
-      password: process.env.INITIAL_GESTOR_PASSWORD || "coordinador2026*",
-      role: "admin",
-      department: "Decanatura de Investigación - ESFIM",
-      avatar: "EP"
+  try {
+    // Sincronizar o crear cuenta de Gestor (Eduardo Puello) con contraseña de plataforma diefi2026
+    let gestor = await User.findOne({ email: "eduardo.puello@esfim.edu.co" });
+    if (!gestor) {
+      gestor = new User({
+        name: "Eduardo Puello",
+        email: "eduardo.puello@esfim.edu.co",
+        password: "diefi2026",
+        role: "admin",
+        department: "Decanatura de Investigación - ESFIM",
+        avatar: "EP",
+        isActive: true
+      });
+      await gestor.save();
+      console.log("Gestor creado con credenciales autorizadas (eduardo.puello@esfim.edu.co / diefi2026)");
+    } else {
+      gestor.password = "diefi2026";
+      gestor.role = "admin";
+      await gestor.save();
+      console.log("Gestor sincronizado con contraseña de plataforma diefi2026.");
     }
-  ];
-  for (const a of admins) {
-    const doc = new User(a);
-    await doc.save();
-    console.log("Administrador inicial creado:", a.email);
+
+    const count = await User.countDocuments();
+    if (count > 1) { console.log(count + " usuarios en BD."); return; }
+
+    const decano = await User.findOne({ email: "juan.perdomo@esfim.edu.co" });
+    if (!decano) {
+      const doc = new User({
+        name: "Juan Perdomo",
+        email: "juan.perdomo@esfim.edu.co",
+        password: process.env.INITIAL_ADMIN_PASSWORD || "decanatura2026*",
+        role: "admin",
+        department: "Decanatura de Investigación - ESFIM",
+        avatar: "JP",
+        isActive: true
+      });
+      await doc.save();
+      console.log("Decano inicial creado:", doc.email);
+    }
+    console.log("Inicialización lista: Cuentas de Decano y Gestor verificadas.");
+  } catch (err) {
+    console.error("Error en seedInitialData:", err.message);
   }
-  console.log("Inicialización lista: Cuentas de Decano y Coordinador creadas.");
 }
 
 app.use((err, req, res, next) => {

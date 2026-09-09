@@ -75,18 +75,7 @@ function getTransporterForAccount(accountCfg) {
   if (!nodemailer || !accountCfg || !accountCfg.host || !accountCfg.user || !accountCfg.pass) {
     return null;
   }
-  const sig = `${accountCfg.host}:${accountCfg.port}:${accountCfg.user}:${accountCfg.pass}:${accountCfg.secure}`;
-  const key = accountCfg.user || "default";
-  if (cachedTransporters[key] && cachedSignatures[key] === sig) {
-    return cachedTransporters[key];
-  }
-  cachedSignatures[key] = sig;
-  cachedTransporters[key] = nodemailer.createTransport({
-    pool: true,
-    maxConnections: 1,
-    maxMessages: 50,
-    rateDelta: 1000,
-    rateLimit: 1,
+  return nodemailer.createTransport({
     host: accountCfg.host,
     port: parseInt(accountCfg.port) || 587,
     secure: Boolean(accountCfg.secure),
@@ -95,11 +84,9 @@ function getTransporterForAccount(accountCfg) {
       pass: accountCfg.pass
     },
     tls: {
-      ciphers: "SSLv3",
       rejectUnauthorized: false
     }
   });
-  return cachedTransporters[key];
 }
 
 function resolveAccount(cfg, requestedAccount, user) {
@@ -346,6 +333,96 @@ router.post("/send-email", protect, async (req, res) => {
       message: smtpError ? `Fallo SMTP (${smtpError}), registrado en buzón virtual.` : "Registrado en simulador."
     });
   }
+});
+
+// POST /api/send-email-batch - Envío masivo por lotes a nivel Decanatura
+router.post("/send-email-batch", protect, async (req, res) => {
+  const { recipients, subject, html, text, type, metadata, senderAccount } = req.body;
+  if (!Array.isArray(recipients) || recipients.length === 0) {
+    return res.status(400).json({ success: false, message: "Lista de destinatarios requerida." });
+  }
+
+  const cfg = loadConfig();
+  const resolved = resolveAccount(cfg, senderAccount, req.user);
+  const targetCfg = resolved.cfg;
+
+  const t = getTransporterForAccount(targetCfg);
+  const results = [];
+  const emails = loadEmails();
+
+  for (let i = 0; i < recipients.length; i++) {
+    const item = recipients[i];
+    const to = typeof item === 'string' ? item : item.to || item.email;
+    const toName = typeof item === 'object' ? (item.toName || item.name || to) : to;
+    if (!to || !to.includes('@')) continue;
+
+    const emailRecord = {
+      id: "email-" + Date.now() + "-" + Math.random().toString(36).substring(2, 7),
+      to,
+      toName,
+      from: (targetCfg && (targetCfg.fromAddress || targetCfg.user)) || "decanatura@esfim.edu.co",
+      fromName: (targetCfg && targetCfg.fromName) || "Decanatura de Investigación ESFIM",
+      senderAccount: resolved.key,
+      subject: (typeof item === 'object' && item.subject) || subject,
+      html: (typeof item === 'object' && item.html) || html,
+      text: (typeof item === 'object' && item.text) || text,
+      type: type || "task_assignment",
+      metadata: metadata || {},
+      createdAt: new Date().toISOString(),
+      status: "simulated"
+    };
+
+    let smtpSuccess = false;
+    let smtpError = null;
+
+    if (t) {
+      try {
+        const fromStr = `"${targetCfg.fromName}" <${targetCfg.fromAddress || targetCfg.user}>`;
+        const toStr = toName ? `"${String(toName).replace(/"/g, "")}" <${to.trim()}>` : to.trim();
+        const info = await t.sendMail({
+          from: fromStr,
+          replyTo: fromStr,
+          to: toStr,
+          subject: emailRecord.subject,
+          html: emailRecord.html,
+          text: emailRecord.text
+        });
+        smtpSuccess = true;
+        emailRecord.status = "sent_smtp";
+        emailRecord.smtpMessage = `Entregado vía SMTP desde cuenta ${resolved.key === 'decano' ? 'Decano' : 'Gestor'} (${targetCfg.user}) [${info.messageId}]`;
+      } catch (e) {
+        console.error(`Error SMTP enviando a ${to}:`, e.message);
+        smtpError = e.message;
+        emailRecord.status = "simulated";
+        emailRecord.smtpMessage = `Fallo de envío SMTP (${resolved.key}): ${e.message} (Disponible en buzón virtual EFIM)`;
+      }
+    } else {
+      emailRecord.status = "simulated";
+      emailRecord.smtpMessage = `Servidor SMTP (${resolved.key}) no configurado (guardado en buzón virtual)`;
+    }
+
+    emails.unshift(emailRecord);
+    results.push({ to, toName, success: smtpSuccess, error: smtpError });
+
+    // Pausa controlada de 800ms entre destinatarios para evitar rate-limiting de Microsoft 365
+    if (i < recipients.length - 1 && t) {
+      await new Promise(r => setTimeout(r, 800));
+    }
+  }
+
+  saveEmails(emails);
+
+  const sentCount = results.filter(r => r.success).length;
+  res.json({
+    success: true,
+    senderAccount: resolved.key,
+    sentCount,
+    totalCount: results.length,
+    results,
+    message: sentCount > 0
+      ? `Se transmitieron exitosamente ${sentCount} de ${results.length} correos vía SMTP desde la cuenta de ${resolved.key === 'decano' ? 'Decano' : 'Gestor'}.`
+      : `Correos registrados en el buzón institucional (${results.length} destinatarios).`
+  });
 });
 
 module.exports = router;
