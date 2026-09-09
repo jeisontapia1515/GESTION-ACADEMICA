@@ -1,1 +1,258 @@
-[]
+[
+  {
+    "id": "notif-1788964520477-mzu3",
+    "title": "📋 Nuevo Compromiso Asignado",
+    "message": "Jefatura le ha asignado la tarea \"EVIDENCIAS\" (Actividades de Decanatura) con fecha límite 10/9/2026, 11:00:00 p. m..",
+    "type": "info",
+    "taskId": "6aa16ea872b324aaf1f7c8f5",
+    "targetUserId": "6aa051408c37db487a98ecc7",
+    "targetUserIds": [],
+    "targetRole": "employee",
+    "metadata": {},
+    "createdBy": {
+      "id": "6a9f0a2c733bb6d384bb0d92",
+      "name": "Eduardo Puello",
+      "role": "admin"
+    },
+    "timestamp": "2026-09-09T14:35:21.344Z",
+    "read": false,
+    "readBy": []
+  },
+  {
+    "id": "notif-1788964520478-g14y",
+    "title": "📋 Nuevo Compromiso Asignado",
+    "message": "Jefatura le ha asignado la tarea \"EVIDENCIAS\" (Actividades de Decanatura) con fecha límite 10/9/2026, 11:00:00 p. m..",
+    "type": "info",
+    "taskId": "6aa16ea872b324aaf1f7c8f5",
+    "targetUserId": "6aa050b98c37db487a98ecc6",
+    "targetUserIds": [],
+    "targetRole": "employee",
+    "metadata": {},
+    "createdBy": {
+      "id": "6a9f0a2c733bb6d384bb0d92",
+      "name": "Eduardo Puello",
+      "role": "admin"
+    },
+    "timestamp": "2026-09-09T14:35:21.272Z",
+    "read": false,
+    "readBy": []
+  },
+  {
+    "id": "notif-1788964520478-mzwr",
+    "title": "📋 Nuevo Compromiso Asignado",
+    "message": "Jefatura le ha asignado la tarea \"EVIDENCIAS\" (Actividades de Decanatura) con fecha límite 10/9/2026, 11:00:00 p. m..",
+    "type": "info",
+    "taskId": "6aa16ea872b324aaf1f7c8f5",
+    "targetUserId": "6aa050218c37db487a98ecc4",
+    "targetUserIds": [],
+    "targetRole": "employee",
+    "metadata": {},
+    "createdBy": {
+      "id": "6a9f0a2c733bb6d384bb0d92",
+      "name": "Eduardo Puello",
+      "role": "admin"
+    },
+    "timestamp": "2026-09-09T14:35:20.924Z",
+    "read": false,
+    "readBy": []
+  },
+  {
+    "id": "notif-1788964520479-vjzz",
+    "title": "🏛️ Tarea Plenaria de Decanatura Delegada",
+    "message": "Se delegó el compromiso \"EVIDENCIAS\" (Actividades de Decanatura) a: DOC JEISON TAPIA, DOC JOSE PERDOMO, DOC KATIA LOPEZ, DOC MAYBELL OVIOL, DOC. CESAR RIASCOS, DOC. MARCELA GENES, DOC. PAULA VILLAMIZAR, Eduardo Puello, Juan Perdomo. Plazo: 10/9/2026, 11:00:00 p. m..",
+    "type": "warning",
+    "taskId": "6aa16ea872b324aaf1f7c8f5",
+    "targetUserId": "admin",
+    "targetUserIds": [],
+    "targetRole": "admin",
+    "metadata": {},
+    "createdBy": {
+      "id": "6a9f0a2c733bb6d384bb0d92",
+      "name": "Eduardo Puello",
+      "role": "admin"
+    },
+    "timestamp": "2026-09-09T14:35:20.896Z",
+    "read": false,
+    "readBy": []
+  },
+  {
+    "id": "notif-1788964520478-21yw",
+    "title": "📋 Nuevo Compromiso Asignado",
+    "message": "Jefatura le ha asignado la tarea \"EVIDENCIAS\" (Actividades de Decanatura) con fecha límite 10/9/2026, 11:00:00 p. m..",
+    "type": "info",
+    "taskId": "6aa16ea872b324aaf1f7c8f5",
+    "targetUserId": "6a9f0a2c733bb6d384bb0d91",
+    "targetUserIds": [],
+    "targetRole": "employee",
+    "metadata": {},
+    "createdBy": {
+      "id": "6a9f0a2c733bb6d384bb0d92",
+      "name": "Eduardo Puello",
+      "role": "admin"
+    },
+    "timestamp": "2026-09-09T14:35:20.820Z",
+    "read": false,
+    "readBy": []
+  },
+  {
+    "id": "notif-1788964520478-v4uv",
+    "title": "📋 Nuevo Compromiso Asignado",
+    "message": "Jefatura le ha asignado la tarea \"EVIDENCIAS\" (Actividades de Decanatura) con fecha límite 10/9/2026, 11:00:00 p. m..",
+    "type": "info",
+    "taskId": "6aa16ea872b324aaf1f7c8f5",
+    "targetUserId": "6a9f0a2c733bb6d384bb0d92",
+    "targetUserIds": [],
+    "targetRole": "employee",
+    "metadata": {},
+    "createdBy": {
+      "id": "6a9f0a2c733bb6d384bb0d92",
+      "name": "Eduardo Puello",
+      "role": "admin"
+    },
+    "timestamp": "2026-09-09T14:35:20.797Z",
+    "read": false,
+    "readBy": []
+  },
+  {
+    "id": "notif-1788964520478-gxo8",
+    "title": "📋 Nuevo Compromiso Asignado",
+    "message": "Jefatura le ha asignado la tarea \"EVIDENCIAS\" (Actividades de Decanatura) con fecha límite 10/9/2026, 11:00:00 p. m..",
+    "type": "info",
+    "taskId": "6aa16ea872b324aaf1f7c8f5",
+    "targetUserId": "6aa0504a8c37db487a98ecc5",
+    "targetUserIds": [],
+    "targetRole": "employee",
+    "metadata": {},
+    "createdBy": {
+      "id": "6a9f0a2c733bb6d384bb0d92",
+      "name": "Eduardo Puello",
+      "role": "admin"
+    },
+    "timestamp": "2026-09-09T14:35:20.695Z",
+    "read": false,
+    "readBy": []
+  },
+  {
+    "id": "notif-1788964520477-ojld",
+    "title": "📋 Nuevo Compromiso Asignado",
+    "message": "Jefatura le ha asignado la tarea \"EVIDENCIAS\" (Actividades de Decanatura) con fecha límite 10/9/2026, 11:00:00 p. m..",
+    "type": "info",
+    "taskId": "6aa16ea872b324aaf1f7c8f5",
+    "targetUserId": "6aa052758c37db487a98ecc9",
+    "targetUserIds": [],
+    "targetRole": "employee",
+    "metadata": {},
+    "createdBy": {
+      "id": "6a9f0a2c733bb6d384bb0d92",
+      "name": "Eduardo Puello",
+      "role": "admin"
+    },
+    "timestamp": "2026-09-09T14:35:20.688Z",
+    "read": false,
+    "readBy": []
+  },
+  {
+    "id": "notif-1788964520477-mypy",
+    "title": "📋 Nuevo Compromiso Asignado",
+    "message": "Jefatura le ha asignado la tarea \"EVIDENCIAS\" (Actividades de Decanatura) con fecha límite 10/9/2026, 11:00:00 p. m..",
+    "type": "info",
+    "taskId": "6aa16ea872b324aaf1f7c8f5",
+    "targetUserId": "6aa051dd8c37db487a98ecc8",
+    "targetUserIds": [],
+    "targetRole": "employee",
+    "metadata": {},
+    "createdBy": {
+      "id": "6a9f0a2c733bb6d384bb0d92",
+      "name": "Eduardo Puello",
+      "role": "admin"
+    },
+    "timestamp": "2026-09-09T14:35:20.680Z",
+    "read": false,
+    "readBy": []
+  },
+  {
+    "id": "notif-1788964520477-1ue8",
+    "title": "📋 Nuevo Compromiso Asignado",
+    "message": "Jefatura le ha asignado la tarea \"EVIDENCIAS\" (Actividades de Decanatura) con fecha límite 10/9/2026, 11:00:00 p. m..",
+    "type": "info",
+    "taskId": "6aa16ea872b324aaf1f7c8f5",
+    "targetUserId": "6a9f18c21fe7d323f34ff9cb",
+    "targetUserIds": [],
+    "targetRole": "employee",
+    "metadata": {},
+    "createdBy": {
+      "id": "6a9f0a2c733bb6d384bb0d92",
+      "name": "Eduardo Puello",
+      "role": "admin"
+    },
+    "timestamp": "2026-09-09T14:35:20.592Z",
+    "read": false,
+    "readBy": []
+  },
+  {
+    "id": "notif-1788964107613-fq7c",
+    "title": "📋 Tarea Delegada",
+    "message": "Se delegó el compromiso \"Compromiso de Verificacion Institucional\" (Investigación Formativa) a: Eduardo Puello. Plazo: 10/9/2026, 11:00:00 p. m..",
+    "type": "info",
+    "taskId": "6aa16d0b72b324aaf1f7c8f4",
+    "targetUserId": "admin",
+    "targetUserIds": [],
+    "targetRole": "admin",
+    "metadata": {},
+    "createdBy": {
+      "id": "6a9f0a2c733bb6d384bb0d92",
+      "name": "Eduardo Puello",
+      "role": "admin"
+    },
+    "timestamp": "2026-09-09T14:28:27.872Z",
+    "read": true,
+    "readBy": [
+      "6a9f0a2c733bb6d384bb0d92",
+      "eduardo.puello@esfim.edu.co"
+    ]
+  },
+  {
+    "id": "notif-1788964107612-mlv4",
+    "title": "📋 Nuevo Compromiso Asignado",
+    "message": "Jefatura le ha asignado la tarea \"Compromiso de Verificacion Institucional\" (Investigación Formativa) con fecha límite 10/9/2026, 11:00:00 p. m..",
+    "type": "info",
+    "taskId": "6aa16d0b72b324aaf1f7c8f4",
+    "targetUserId": "6a9f0a2c733bb6d384bb0d92",
+    "targetUserIds": [],
+    "targetRole": "employee",
+    "metadata": {},
+    "createdBy": {
+      "id": "6a9f0a2c733bb6d384bb0d92",
+      "name": "Eduardo Puello",
+      "role": "admin"
+    },
+    "timestamp": "2026-09-09T14:28:27.718Z",
+    "read": true,
+    "readBy": [
+      "6a9f0a2c733bb6d384bb0d92",
+      "eduardo.puello@esfim.edu.co"
+    ]
+  },
+  {
+    "id": "notif-1788963361403-wveu",
+    "title": "Prueba de Campana",
+    "message": "Esta es una notificación de prueba para la campanita.",
+    "type": "info",
+    "taskId": null,
+    "targetUserId": "all",
+    "targetUserIds": [],
+    "targetRole": null,
+    "metadata": {},
+    "createdBy": {
+      "id": "6a9f0a2c733bb6d384bb0d92",
+      "name": "Eduardo Puello",
+      "role": "admin"
+    },
+    "timestamp": "2026-09-09T14:16:01.403Z",
+    "read": true,
+    "readBy": [
+      "6a9f0a2c733bb6d384bb0d92",
+      "eduardo.puello@esfim.edu.co"
+    ]
+  }
+]

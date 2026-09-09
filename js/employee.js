@@ -157,10 +157,14 @@ const EmployeeModule = {
 
     const priorityLabel = {
       urgent: 'Urgente',
+      urgente: 'Urgente',
       high: 'Alta',
+      alta: 'Alta',
       medium: 'Media',
-      low: 'Baja'
-    }[task.priority] || 'Media';
+      media: 'Media',
+      low: 'Baja',
+      baja: 'Baja'
+    }[String(task.priority || '').toLowerCase()] || 'Media';
 
     const hasReminders = (task.comments || []).some(c => c.type === 'reminder');
 

@@ -50,6 +50,13 @@ router.get("/", protect, (req, res) => {
     if (target === uid || target === uEmail) return true;
     if (Array.isArray(n.targetUserIds) && (n.targetUserIds.includes(uid) || n.targetUserIds.includes(uEmail))) return true;
     return false;
+  }).map(n => {
+    const readByList = Array.isArray(n.readBy) ? n.readBy : [];
+    const isReadByUser = readByList.includes(uid) || (uEmail && readByList.includes(uEmail));
+    return {
+      ...n,
+      read: isReadByUser
+    };
   });
 
   res.json({ success: true, notifications: filtered });
@@ -57,14 +64,14 @@ router.get("/", protect, (req, res) => {
 
 // POST /api/notifications
 router.post("/", protect, (req, res) => {
-  const { title, message, type, taskId, targetUserId, targetUserIds, targetRole, metadata } = req.body;
+  const { id, title, message, type, taskId, targetUserId, targetUserIds, targetRole, metadata } = req.body;
   if (!title || !message) {
     return res.status(400).json({ success: false, message: "Título y mensaje requeridos." });
   }
 
   const allNotifs = loadNotifications();
   const newNotif = {
-    id: "notif-" + Date.now() + "-" + Math.random().toString(36).substring(2, 6),
+    id: id || ("notif-" + Date.now() + "-" + Math.random().toString(36).substring(2, 6)),
     title,
     message,
     type: type || "info",
@@ -94,13 +101,15 @@ router.put("/:id/read", protect, (req, res) => {
   const allNotifs = loadNotifications();
   const notifId = req.params.id;
   const uid = req.user._id ? req.user._id.toString() : req.user.id;
+  const uEmail = (req.user.email || "").toLowerCase().trim();
 
   let found = false;
   allNotifs.forEach(n => {
     if (n.id === notifId) {
-      n.read = true;
       if (!Array.isArray(n.readBy)) n.readBy = [];
       if (!n.readBy.includes(uid)) n.readBy.push(uid);
+      if (uEmail && !n.readBy.includes(uEmail)) n.readBy.push(uEmail);
+      n.read = true;
       found = true;
     }
   });
@@ -116,11 +125,13 @@ router.put("/:id/read", protect, (req, res) => {
 router.put("/read-all", protect, (req, res) => {
   const allNotifs = loadNotifications();
   const uid = req.user._id ? req.user._id.toString() : req.user.id;
+  const uEmail = (req.user.email || "").toLowerCase().trim();
 
   allNotifs.forEach(n => {
-    n.read = true;
     if (!Array.isArray(n.readBy)) n.readBy = [];
     if (!n.readBy.includes(uid)) n.readBy.push(uid);
+    if (uEmail && !n.readBy.includes(uEmail)) n.readBy.push(uEmail);
+    n.read = true;
   });
 
   saveNotifications(allNotifs);

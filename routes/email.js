@@ -8,7 +8,19 @@ const path = require("path");
 const DATA_DIR = path.join(__dirname, "../data");
 const EMAILS_FILE = path.join(DATA_DIR, "emails.json");
 const CONFIG_FILE = path.join(DATA_DIR, "email_config.json");
+const LOGO_PATH = path.join(__dirname, "../img/logo.png");
 if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
+
+function getLogoAttachment() {
+  if (fs.existsSync(LOGO_PATH)) {
+    return [{
+      filename: "escudo-decanatura.png",
+      path: LOGO_PATH,
+      cid: "esfim_logo"
+    }];
+  }
+  return [];
+}
 
 function loadEmails() { try { return fs.existsSync(EMAILS_FILE) ? JSON.parse(fs.readFileSync(EMAILS_FILE, "utf8")) : []; } catch(e) { return []; } }
 function saveEmails(e) { try { fs.writeFileSync(EMAILS_FILE, JSON.stringify(e.slice(0, 300), null, 2)); } catch(err) {} }
@@ -218,19 +230,29 @@ router.post("/test-email", protect, async (req, res) => {
     const info = await t.sendMail({
       from: fromStr,
       to,
-      subject: `⚓ [PRUEBA ${roleLabel.toUpperCase()}] Verificación SMTP EFIM`,
+      subject: `[PRUEBA ${roleLabel.toUpperCase()}] Verificación SMTP ESFIM`,
       text: `Prueba oficial de conexión del sistema de notificaciones enviada desde la cuenta de ${roleLabel} (${targetCfg.user}).`,
       html: `
-        <div style="font-family:sans-serif; padding:20px; background:#f1f5f9; color:#1e293b;">
-          <div style="max-width:550px; margin:0 auto; background:#fff; border-radius:8px; padding:24px; border:1px solid #cbd5e1; border-top:4px solid #0f2942;">
-            <h2 style="color:#0f2942; margin-top:0;">⚓ Verificación de Correo Institucional</h2>
-            <p>Este es un correo de prueba enviado exitosamente desde la cuenta oficial de <strong>${roleLabel}</strong> (${targetCfg.user}) para la <strong>Decanatura de Investigación - EFIM</strong>.</p>
-            <p style="color:#059669; font-weight:bold;">✅ Conexión SMTP autenticada y entrega confirmada.</p>
-            <hr style="border:0; border-top:1px solid #e2e8f0; margin:20px 0;" />
-            <small style="color:#64748b;">Escuela de Formación de Infantería de Marina • Coveñas, Sucre</small>
+        <div style="font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; padding:20px; background:#f1f5f9; color:#1e293b;">
+          <div style="max-width:550px; margin:0 auto; background:#fff; border-radius:8px; border:1px solid #cbd5e1; overflow:hidden; box-shadow:0 4px 12px rgba(0,0,0,0.06);">
+            <div style="background-color:#0a192f; padding:16px 20px; text-align:center; border-bottom:3px solid #c99736;">
+              <img src="cid:esfim_logo" alt="Escudo Decanatura ESFIM" width="55" height="55" border="0" style="display:block; margin:0 auto 6px; width:55px; height:55px; max-width:55px;" />
+              <h2 style="color:#ffffff; margin:0; font-size:15px; letter-spacing:0.8px; text-transform:uppercase;">ARMADA NACIONAL DE COLOMBIA</h2>
+              <div style="color:#c99736; font-size:12px; margin-top:2px; font-weight:600; text-transform:uppercase; letter-spacing:0.5px;">Escuela de Formación de Infantería de Marina • Decanatura de Investigación</div>
+            </div>
+            <div style="padding:22px 24px;">
+              <h3 style="color:#0a192f; margin-top:0; font-size:16px;">Verificación de Correo Institucional</h3>
+              <p style="font-size:13.5px; line-height:1.5; color:#334155;">Este es un correo de prueba enviado exitosamente desde la cuenta oficial de <strong>${roleLabel}</strong> (<code>${targetCfg.user}</code>) para la <strong>Decanatura de Investigación - ESFIM</strong>.</p>
+              <div style="background:#ecfdf5; border:1px solid #a7f3d0; border-radius:6px; padding:10px 14px; margin:14px 0; color:#065f46; font-size:13px; font-weight:600;">
+                ✅ Conexión SMTP autenticada y entrega confirmada a la bandeja de entrada.
+              </div>
+              <hr style="border:0; border-top:1px solid #e2e8f0; margin:18px 0;" />
+              <small style="color:#64748b; font-size:11px;">Escuela de Formación de Infantería de Marina • Coveñas, Sucre — República de Colombia</small>
+            </div>
           </div>
         </div>
-      `
+      `,
+      attachments: getLogoAttachment()
     });
 
     res.json({
@@ -295,7 +317,8 @@ router.post("/send-email", protect, async (req, res) => {
         to: toStr,
         subject,
         html,
-        text
+        text,
+        attachments: getLogoAttachment()
       });
       smtpSuccess = true;
       messageId = info.messageId;
@@ -385,7 +408,8 @@ router.post("/send-email-batch", protect, async (req, res) => {
           to: toStr,
           subject: emailRecord.subject,
           html: emailRecord.html,
-          text: emailRecord.text
+          text: emailRecord.text,
+          attachments: getLogoAttachment()
         });
         smtpSuccess = true;
         emailRecord.status = "sent_smtp";

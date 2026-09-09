@@ -401,7 +401,7 @@ const App = {
           ${areaInfo.icon} ${areaInfo.name}
         </span>
       ` : ''}
-      <span class="badge badge-priority-${task.priority}">${task.priority.toUpperCase()}</span>
+      <span class="badge badge-priority-${task.priority}">${{urgent:'URGENTE',urgente:'URGENTE',high:'ALTA',alta:'ALTA',medium:'MEDIA',media:'MEDIA',low:'BAJA',baja:'BAJA'}[String(task.priority || '').toLowerCase()] || 'MEDIA'}</span>
       <span class="badge ${alert.badgeClass}">${alert.label}</span>
       <span class="badge badge-status-${task.status}">ESTADO: ${task.status.replace(/_/g, ' ').toUpperCase()}</span>
     `;

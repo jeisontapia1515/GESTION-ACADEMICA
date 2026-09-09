@@ -335,10 +335,14 @@ const AdminModule = {
 
     const priorityLabel = {
       urgent: 'Urgente',
+      urgente: 'Urgente',
       high: 'Alta',
+      alta: 'Alta',
       medium: 'Media',
-      low: 'Baja'
-    }[task.priority] || 'Media';
+      media: 'Media',
+      low: 'Baja',
+      baja: 'Baja'
+    }[String(task.priority || '').toLowerCase()] || 'Media';
 
     const assigneesNames = assignees.map(a => `${a.name} (${a.email})`).join(', ');
 
@@ -485,7 +489,7 @@ const AdminModule = {
                     </div>
                   `}
                 </td>
-                <td><span class="badge badge-priority-${t.priority}">${t.priority}</span></td>
+                <td><span class="badge badge-priority-${t.priority}">${{urgent:'Urgente',urgente:'Urgente',high:'Alta',alta:'Alta',medium:'Media',media:'Media',low:'Baja',baja:'Baja'}[String(t.priority || '').toLowerCase()] || 'Media'}</span></td>
                 <td><span style="font-family: var(--font-mono); font-size:0.8rem;">${dueDateFormatted}</span></td>
                 <td><span class="badge ${alert.badgeClass}">${alert.label}</span></td>
                 <td style="width: 120px;">
@@ -620,14 +624,21 @@ const AdminModule = {
   populateAssigneesChecklist() {
     const container = document.getElementById('assigneesCheckboxContainer');
     if (!container) return;
-    const employees = window.appStore.getEmployees();
+    const allUsers = window.appStore.getUsers();
+    // Include all active staff members so the Gestor can delegate to teachers or assign to himself for testing
+    const assignableUsers = allUsers.filter(u => u.isActive !== false);
 
-    container.innerHTML = employees.map(emp => {
+    container.innerHTML = assignableUsers.map(emp => {
+      const uId = emp.id || emp._id;
       const areaObj = emp.area && window.DECANATURA_AREAS[emp.area] ? window.DECANATURA_AREAS[emp.area] : null;
-      const areaBadge = areaObj ? `<span class="badge ${areaObj.badgeClass}" style="font-size:0.65rem; padding:1px 6px;">${areaObj.icon} ${areaObj.name}</span>` : '';
+      let areaBadge = areaObj ? `<span class="badge ${areaObj.badgeClass}" style="font-size:0.65rem; padding:1px 6px;">${areaObj.icon} ${areaObj.name}</span>` : '';
+      if (emp.role === 'admin') {
+        const isAdminDecano = (emp.name || '').toLowerCase().includes('perdomo') || (emp.email || '').includes('decano');
+        areaBadge = `<span class="badge badge-warning" style="font-size:0.65rem; padding:1px 6px;">🛡️ ${isAdminDecano ? 'Decano' : 'Gestor'}</span>`;
+      }
       return `
         <label class="assignee-checkbox-row" style="display:flex; align-items:center; gap:0.5rem; padding:0.35rem 0.5rem; border-radius:6px; background:var(--surface-1); cursor:pointer; font-size:0.83rem; transition:background 0.15s; border:1px solid transparent;">
-          <input type="checkbox" name="assigneeDocenteCheckbox" value="${emp.id}" data-email="${emp.email}" data-name="${emp.name}" onchange="AdminModule.updateAssigneesSummary()" style="cursor:pointer; width:16px; height:16px;" />
+          <input type="checkbox" name="assigneeDocenteCheckbox" value="${uId}" data-email="${emp.email}" data-name="${emp.name}" onchange="AdminModule.updateAssigneesSummary()" style="cursor:pointer; width:16px; height:16px;" />
           <div style="flex:1; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:0.25rem;">
             <div>
               <strong style="color:var(--text-main);">${emp.name}</strong>
@@ -732,16 +743,17 @@ const AdminModule = {
       if (!u && cb.dataset.email) {
         u = window.appStore.getUserById(cb.dataset.email);
       }
-      if (!u && cb.dataset.email) {
-        u = {
-          id: cb.value,
-          name: cb.dataset.name || 'Docente Investigador',
-          email: cb.dataset.email
-        };
-      }
-      if (u) {
-        targetDocentes.push(u);
-        assignedIds.push(u.id || cb.value);
+      const uId = (u && (u.id || u._id)) || cb.value;
+      const uEmail = (u && u.email) || cb.dataset.email;
+      const uName = (u && u.name) || cb.dataset.name || 'Docente Investigador';
+      
+      targetDocentes.push({
+        id: uId,
+        name: uName,
+        email: uEmail
+      });
+      if (!assignedIds.includes(uId)) {
+        assignedIds.push(uId);
       }
     });
 
@@ -752,7 +764,7 @@ const AdminModule = {
       .filter(e => e.includes('@'));
 
     customEmails.forEach(emailVal => {
-      let existingUser = window.appStore.getUsers().find(u => u.email.toLowerCase() === emailVal.toLowerCase());
+      let existingUser = window.appStore.getUsers().find(u => u.email && u.email.toLowerCase() === emailVal.toLowerCase());
       if (!existingUser) {
         const cleanName = emailVal.split('@')[0].split('.').map(p => p.charAt(0).toUpperCase() + p.slice(1)).join(' ');
         existingUser = window.appStore.createEmployee({
@@ -765,9 +777,14 @@ const AdminModule = {
           Auth.renderDemoSwitcher();
         }
       }
-      if (!assignedIds.includes(existingUser.id)) {
-        targetDocentes.push(existingUser);
-        assignedIds.push(existingUser.id);
+      const uId = existingUser.id || existingUser._id || emailVal;
+      if (!assignedIds.includes(uId)) {
+        targetDocentes.push({
+          id: uId,
+          name: existingUser.name,
+          email: existingUser.email
+        });
+        assignedIds.push(uId);
       }
     });
 
