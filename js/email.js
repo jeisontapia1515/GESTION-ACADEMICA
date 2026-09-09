@@ -11,7 +11,7 @@ const EmailModule = {
   },
 
   getHeaders() {
-    const token = (window.appStore && window.appStore.getToken) ? window.appStore.getToken() : (sessionStorage.getItem('efim_token') || localStorage.getItem('efim_token'));
+    const token = (window.appStore && window.appStore.getToken) ? window.appStore.getToken() : (sessionStorage.getItem('ESFIM_token') || localStorage.getItem('ESFIM_token'));
     const headers = { 'Content-Type': 'application/json' };
     if (token) headers['Authorization'] = `Bearer ${token}`;
     return headers;
@@ -48,6 +48,24 @@ const EmailModule = {
   },
 
   activeAccount: 'decano',
+
+  // Obtiene dinámicamente la URL base de la aplicación (web desplegada o local)
+  getAppUrl() {
+    // 1. Si existe una URL configurada explícitamente en el servidor/módulo
+    if (this.currentConfig && this.currentConfig.appUrl && this.currentConfig.appUrl.trim()) {
+      let url = this.currentConfig.appUrl.trim();
+      return url.endsWith('/') ? url : url + '/';
+    }
+    // 2. Origen dinámico del navegador (dominio donde está desplegado el aplicativo en la web)
+    if (typeof window !== 'undefined' && window.location && window.location.origin) {
+      const origin = window.location.origin;
+      if (origin && origin !== 'null' && !origin.startsWith('file:')) {
+        return origin.endsWith('/') ? origin : origin + '/';
+      }
+    }
+    // 3. Fallback por defecto en local
+    return 'http://localhost:3000/';
+  },
 
   // Alias for compatibility with topbar button
   openConfigModal(defaultTab = 'config') {
@@ -130,6 +148,7 @@ const EmailModule = {
       ? 'Decano de Investigación - ESFIM' 
       : 'Gestor / Coordinador de Investigación - ESFIM';
     setVal('smtpFromNameInput', cfg.fromName || defaultFromName);
+    setVal('smtpAppUrlInput', (this.currentConfig && this.currentConfig.appUrl) || '');
     
     const secureSelect = document.getElementById('smtpSecureSelect');
     if (secureSelect) {
@@ -184,9 +203,13 @@ const EmailModule = {
       fromName: document.getElementById('smtpFromNameInput').value.trim()
     };
 
+    const appUrlInput = document.getElementById('smtpAppUrlInput');
     const payload = {
       [this.activeAccount]: accountData
     };
+    if (appUrlInput) {
+      payload.appUrl = appUrlInput.value.trim();
+    }
 
     try {
       const res = await fetch('/api/email-config', {
@@ -363,6 +386,7 @@ const EmailModule = {
 
   // Construye el HTML y texto formal del correo para asignación de tareas
   buildTaskEmailContent(task, docente) {
+    const appUrl = this.getAppUrl();
     const areaObj = window.DECANATURA_AREAS && task.area ? window.DECANATURA_AREAS[task.area] : null;
     const areaName = areaObj ? areaObj.name : 'Investigación ESFIM';
     const dueDateFormatted = new Date(task.dueDate).toLocaleString('es-CO', {
@@ -472,7 +496,7 @@ const EmailModule = {
             </p>
 
             <div style="text-align:center; margin:20px 0 8px;">
-              <a href="http://localhost:3000/" style="display:inline-block; background-color:#0a192f; color:#ffffff; font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-weight:700; padding:11px 24px; border-radius:6px; text-decoration:none; font-size:13px; letter-spacing:0.5px; border-bottom:3px solid #c99736;">
+              <a href="${appUrl}" style="display:inline-block; background-color:#0a192f; color:#ffffff; font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-weight:700; padding:11px 24px; border-radius:6px; text-decoration:none; font-size:13px; letter-spacing:0.5px; border-bottom:3px solid #c99736;">
                 🏛️ Acceder al Sistema de Gestión ESFIM
               </a>
             </div>
@@ -499,7 +523,7 @@ Por directriz de la Jefatura se le ha asignado la siguiente tarea:
 - FECHA LÍMITE: ${dueDateFormatted}
 - DESCRIPCIÓN: ${task.description}
 
-Favor acceder a la plataforma institucional en http://localhost:3000/ para reportar su avance.
+Favor acceder a la plataforma institucional en ${appUrl} para reportar su avance.
     `.trim();
 
     return { areaName, dueDateFormatted, html, text };
@@ -605,8 +629,8 @@ Favor acceder a la plataforma institucional en http://localhost:3000/ para repor
           );
         } else {
           // Encoded snippet for 1-click Outlook open
-          const safeSubject = encodeURIComponent(`⚓ [EFIM ${areaName}] ${task.title}`);
-          const safeBody = encodeURIComponent(textBody);
+          const safeSubject = encodeURIComponent(`⚓ [ESFIM ${areaName}] ${task.title}`);
+          const safeBody = encodeURIComponent(text);
           AlertsEngine.showToast(
             'Tarea Asignada a Docente',
             `<div>
@@ -635,6 +659,7 @@ Favor acceder a la plataforma institucional en http://localhost:3000/ para repor
   // Dispatches reminder email
   async notifyTaskReminder(task, docente, reminderText) {
     if (!docente || !docente.email) return;
+    const appUrl = this.getAppUrl();
 
     const htmlBody = `
       <div style="font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; padding:16px; background-color:#f1f5f9; color:#1e293b;">
@@ -658,7 +683,7 @@ Favor acceder a la plataforma institucional en http://localhost:3000/ para repor
             <p style="margin-bottom:0;"><strong>Tarea:</strong> ${task.title}<br/>
             <strong>Fecha Límite:</strong> <span style="color:#b91c1c; font-weight:bold;">${new Date(task.dueDate).toLocaleString('es-CO')}</span></p>
             <div style="text-align:center; margin-top:20px;">
-              <a href="http://localhost:3000/" style="display:inline-block; background-color:#0a192f; color:#ffffff; padding:10px 22px; text-decoration:none; border-radius:6px; font-size:13px; font-weight:bold; border-bottom:3px solid #c99736;">🏛️ Acceder a ESFIM</a>
+              <a href="${appUrl}" style="display:inline-block; background-color:#0a192f; color:#ffffff; padding:10px 22px; text-decoration:none; border-radius:6px; font-size:13px; font-weight:bold; border-bottom:3px solid #c99736;">🏛️ Acceder a ESFIM</a>
             </div>
           </div>
         </div>
@@ -674,7 +699,7 @@ Favor acceder a la plataforma institucional en http://localhost:3000/ para repor
           toName: docente.name,
           subject: `⏰ [RECORDATORIO ESFIM] ${task.title}`,
           html: htmlBody,
-          text: `RECORDATORIO DECANATURA ESFIM: ${reminderText} | Tarea: ${task.title}`,
+          text: `RECORDATORIO DECANATURA ESFIM: ${reminderText} | Tarea: ${task.title} | Acceso a la plataforma: ${appUrl}`,
           type: 'reminder',
           metadata: { taskId: task.id }
         })
@@ -684,7 +709,7 @@ Favor acceder a la plataforma institucional en http://localhost:3000/ para repor
         AlertsEngine.showToast('Recordatorio Entregado', `Correo remitido a ${docente.email} vía SMTP.`, 'success');
       } else {
         const reminderSubject = encodeURIComponent(`⏰ [RECORDATORIO ESFIM] ${task.title}`);
-        const reminderBody = encodeURIComponent(`Estimado(a) ${docente.name},\n\nLa Jefatura de Decanatura de Investigación EFIM le recuerda:\n\n"${reminderText}"\n\nCompromiso: ${task.title}\nPlazo: ${new Date(task.dueDate).toLocaleString('es-CO')}\n\nAcceso a la plataforma: http://localhost:3000/`);
+        const reminderBody = encodeURIComponent(`Estimado(a) ${docente.name},\n\nLa Jefatura de Decanatura de Investigación ESFIM le recuerda:\n\n"${reminderText}"\n\nCompromiso: ${task.title}\nPlazo: ${new Date(task.dueDate).toLocaleString('es-CO')}\n\nAcceso a la plataforma: ${appUrl}`);
         AlertsEngine.showToast(
           'Recordatorio Registrado',
           `<div>
@@ -709,6 +734,7 @@ Favor acceder a la plataforma institucional en http://localhost:3000/ para repor
   // Dispatches issue resolution email
   async notifyIssueResolution(task, docente, resolution, newDueDate) {
     if (!docente || !docente.email) return;
+    const appUrl = this.getAppUrl();
 
     const htmlBody = `
       <div style="font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; padding:16px; background-color:#f1f5f9; color:#1e293b;">
@@ -732,7 +758,7 @@ Favor acceder a la plataforma institucional en http://localhost:3000/ para repor
             </div>
             ${newDueDate ? `<p><strong>Nueva Fecha de Entrega Concedida:</strong> <span style="color:#059669; font-weight:bold;">📅 ${new Date(newDueDate).toLocaleString('es-CO')}</span></p>` : ''}
             <div style="text-align:center; margin-top:20px;">
-              <a href="http://localhost:3000/" style="display:inline-block; background-color:#0a192f; color:#ffffff; padding:10px 22px; text-decoration:none; border-radius:6px; font-size:13px; font-weight:bold; border-bottom:3px solid #059669;">🏛️ Continuar Tarea en Plataforma</a>
+              <a href="${appUrl}" style="display:inline-block; background-color:#0a192f; color:#ffffff; padding:10px 22px; text-decoration:none; border-radius:6px; font-size:13px; font-weight:bold; border-bottom:3px solid #059669;">🏛️ Continuar Tarea en Plataforma</a>
             </div>
           </div>
         </div>
@@ -748,7 +774,7 @@ Favor acceder a la plataforma institucional en http://localhost:3000/ para repor
           toName: docente.name,
           subject: `✅ [ESFIM Resolución] Directriz para: ${task.title}`,
           html: htmlBody,
-          text: `DIRECTRIZ DECANO EFIM: ${resolution}`,
+          text: `DIRECTRIZ DECANO ESFIM: ${resolution}\n\nAcceso a la plataforma: ${appUrl}`,
           type: 'issue_resolution',
           metadata: { taskId: task.id }
         })

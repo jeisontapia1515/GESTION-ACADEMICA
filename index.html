@@ -904,6 +904,14 @@
               </div>
             </div>
 
+            <div class="form-group" style="margin-top:0.6rem;">
+              <label for="smtpAppUrlInput">🌐 URL Pública del Aplicativo Web (Enlace institucional en correos)</label>
+              <input type="url" id="smtpAppUrlInput" class="form-control" placeholder="Automático: se detecta la dirección web actual (ej. https://su-dominio.com/)" />
+              <small style="color: var(--text-muted); font-size: 0.75rem; display: block; margin-top: 0.25rem;">
+                ℹ️ Si se deja en blanco, el sistema toma automáticamente el dominio web en el que esté desplegado (evita redirigir a localhost).
+              </small>
+            </div>
+
             <div style="display:flex; justify-content:flex-end; gap:0.5rem; margin-top:1rem;">
               <button type="button" class="btn btn-secondary" onclick="EmailModule.switchTab('test')">Ir a Prueba de Envío →</button>
               <button type="submit" id="btnSaveSmtpConfig" class="btn btn-primary">💾 Guardar Configuración</button>

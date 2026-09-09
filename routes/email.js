@@ -42,6 +42,7 @@ function normalizeConfig(raw) {
     };
   }
   return {
+    appUrl: (c.appUrl || process.env.APP_URL || "").trim(),
     decano: {
       host: decano.host || "smtp.office365.com",
       port: parseInt(decano.port) || 587,
@@ -132,6 +133,29 @@ function resolveAccount(cfg, requestedAccount, user) {
   return { cfg: norm.gestor.pass ? norm.gestor : norm.decano, key: norm.gestor.pass ? "gestor" : "decano" };
 }
 
+function sanitizeAppUrl(content, req, cfg) {
+  if (!content || typeof content !== "string") return content;
+  if (!content.includes("http://localhost:3000")) return content;
+
+  let targetUrl = (cfg && cfg.appUrl) || process.env.APP_URL;
+  if (!targetUrl && req) {
+    const origin = req.get("origin");
+    const host = req.get("host");
+    const proto = req.headers["x-forwarded-proto"] || req.protocol || "https";
+    if (origin && !origin.includes("localhost")) {
+      targetUrl = origin;
+    } else if (host && !host.includes("localhost")) {
+      targetUrl = `${proto}://${host}`;
+    }
+  }
+
+  if (targetUrl) {
+    targetUrl = targetUrl.replace(/\/+$/, "") + "/";
+    return content.replace(/http:\/\/localhost:3000\/?/g, targetUrl);
+  }
+  return content;
+}
+
 router.get("/email-config", protect, (req, res) => {
   if (req.user.role !== 'admin') {
     return res.status(403).json({ success: false, message: "Acceso restringido al Decano y Gestor." });
@@ -143,6 +167,7 @@ router.get("/email-config", protect, (req, res) => {
   res.json({
     success: true,
     config: {
+      appUrl: cfg.appUrl || process.env.APP_URL || "",
       decano: {
         ...cfg.decano,
         pass: cfg.decano.pass ? "****" : "",
@@ -182,6 +207,7 @@ router.post("/email-config", protect, (req, res) => {
   }
 
   const finalConfig = {
+    appUrl: body.appUrl !== undefined ? String(body.appUrl).trim() : (existing.appUrl || ""),
     decano: updatedDecano,
     gestor: updatedGestor
   };
@@ -275,6 +301,9 @@ router.post("/send-email", protect, async (req, res) => {
   const resolved = resolveAccount(cfg, senderAccount, req.user);
   const targetCfg = resolved.cfg;
 
+  const sanitizedHtml = sanitizeAppUrl(html, req, cfg);
+  const sanitizedText = sanitizeAppUrl(text, req, cfg);
+
   const emailRecord = {
     id: "email-" + Date.now() + "-" + Math.random().toString(36).substring(2, 7),
     to,
@@ -283,8 +312,8 @@ router.post("/send-email", protect, async (req, res) => {
     fromName: (targetCfg && targetCfg.fromName) || "Decanatura de Investigación ESFIM",
     senderAccount: resolved.key,
     subject,
-    html,
-    text,
+    html: sanitizedHtml,
+    text: sanitizedText,
     type: type || "general",
     metadata: metadata || {},
     createdAt: new Date().toISOString(),
@@ -316,8 +345,8 @@ router.post("/send-email", protect, async (req, res) => {
         replyTo: replyTo,
         to: toStr,
         subject,
-        html,
-        text,
+        html: sanitizedHtml,
+        text: sanitizedText,
         attachments: getLogoAttachment()
       });
       smtpSuccess = true;
@@ -379,6 +408,11 @@ router.post("/send-email-batch", protect, async (req, res) => {
     const toName = typeof item === 'object' ? (item.toName || item.name || to) : to;
     if (!to || !to.includes('@')) continue;
 
+    const rawHtml = (typeof item === 'object' && item.html) || html;
+    const rawText = (typeof item === 'object' && item.text) || text;
+    const sanitizedHtml = sanitizeAppUrl(rawHtml, req, cfg);
+    const sanitizedText = sanitizeAppUrl(rawText, req, cfg);
+
     const emailRecord = {
       id: "email-" + Date.now() + "-" + Math.random().toString(36).substring(2, 7),
       to,
@@ -387,8 +421,8 @@ router.post("/send-email-batch", protect, async (req, res) => {
       fromName: (targetCfg && targetCfg.fromName) || "Decanatura de Investigación ESFIM",
       senderAccount: resolved.key,
       subject: (typeof item === 'object' && item.subject) || subject,
-      html: (typeof item === 'object' && item.html) || html,
-      text: (typeof item === 'object' && item.text) || text,
+      html: sanitizedHtml,
+      text: sanitizedText,
       type: type || "task_assignment",
       metadata: metadata || {},
       createdAt: new Date().toISOString(),
