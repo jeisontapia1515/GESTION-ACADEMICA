@@ -89,7 +89,7 @@ const EmployeeModule = {
         <div class="kpi-icon-wrapper">🛑</div>
         <div class="kpi-details">
           <span class="kpi-value" style="color: #d946ef;">${blocked}</span>
-          <span class="kpi-label">Con Problema Reportado</span>
+          <span class="kpi-label">Con Dificultad Reportada</span>
         </div>
       </div>
 
@@ -244,8 +244,8 @@ const EmployeeModule = {
 
         <!-- Employee Actions -->
         <div class="task-actions-bar">
-          <button class="btn btn-warning btn-sm" onclick="EmployeeModule.openReportIssueModal('${task.id}')" title="Notificar novedades u obstáculos al Decano">
-            🛑 Notificar Obstáculo
+          <button class="btn btn-warning btn-sm" onclick="EmployeeModule.openReportIssueModal('${task.id}')" title="Notificar novedades o dificultades al Decano">
+            🛑 Reportar Dificultad
           </button>
           <button class="btn btn-primary btn-sm" onclick="App.openTaskDetailModal('${task.id}')">
             Detalles & Entregables
@@ -319,8 +319,8 @@ const EmployeeModule = {
     document.getElementById('reportIssueModal').classList.remove('active');
 
     AlertsEngine.showToast(
-      'Obstáculo Reportado a Jefatura',
-      'El problema ha sido transmitido con alerta prioritaria al despacho del Jefe para su verificación.',
+      'Dificultad Reportada a Decanatura',
+      'La novedad o dificultad ha sido transmitida con alerta prioritaria al Decano de Investigación.',
       'danger'
     );
 

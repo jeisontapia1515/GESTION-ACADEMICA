@@ -3,9 +3,105 @@
    ========================================================================== */
 
 const Auth = {
+  INACTIVITY_TIMEOUT_MS: 5 * 60 * 1000, // 5 minutos de inactividad
+  inactivityTimer: null,
+  lastActivityUpdate: 0,
+
   init() {
+    this.checkInactivityOnLoad();
     this.updateUserUI();
     this.renderDemoSwitcher();
+    this.setupInactivityTracker();
+  },
+
+  recordActivity() {
+    const now = String(Date.now());
+    sessionStorage.setItem('efim_last_activity', now);
+    localStorage.setItem('efim_last_activity', now);
+    this.lastActivityUpdate = Date.now();
+  },
+
+  recordActivityThrottled() {
+    const now = Date.now();
+    if (now - this.lastActivityUpdate > 5000) {
+      this.recordActivity();
+    }
+  },
+
+  resetInactivityTimer() {
+    if (this.inactivityTimer) {
+      clearTimeout(this.inactivityTimer);
+    }
+    const user = this.getCurrentUser();
+    if (!user) return;
+
+    this.inactivityTimer = setTimeout(() => {
+      this.handleInactivityExpired();
+    }, this.INACTIVITY_TIMEOUT_MS);
+  },
+
+  setupInactivityTracker() {
+    const user = this.getCurrentUser();
+    if (!user) return;
+
+    this.recordActivity();
+    this.resetInactivityTimer();
+
+    const activityEvents = ['mousemove', 'mousedown', 'keydown', 'scroll', 'touchstart', 'click'];
+    const onUserActivity = () => {
+      this.recordActivityThrottled();
+      this.resetInactivityTimer();
+    };
+
+    activityEvents.forEach(evt => {
+      window.addEventListener(evt, onUserActivity, { passive: true });
+    });
+
+    // Validar cuando el usuario vuelve a enfocar la pestaña
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible') {
+        const lastAct = sessionStorage.getItem('efim_last_activity') || localStorage.getItem('efim_last_activity');
+        const now = Date.now();
+        if (lastAct && (now - parseInt(lastAct, 10)) > this.INACTIVITY_TIMEOUT_MS) {
+          this.handleInactivityExpired();
+        } else {
+          this.recordActivity();
+          this.resetInactivityTimer();
+        }
+      }
+    });
+  },
+
+  checkInactivityOnLoad() {
+    const user = this.getCurrentUser();
+    if (!user) return;
+
+    const lastAct = sessionStorage.getItem('efim_last_activity') || localStorage.getItem('efim_last_activity');
+    const now = Date.now();
+    if (!lastAct || (now - parseInt(lastAct, 10)) > this.INACTIVITY_TIMEOUT_MS) {
+      this.handleInactivityExpired();
+    } else {
+      this.recordActivity();
+    }
+  },
+
+  handleInactivityExpired() {
+    if (this.inactivityTimer) {
+      clearTimeout(this.inactivityTimer);
+      this.inactivityTimer = null;
+    }
+    sessionStorage.removeItem('efim_token');
+    sessionStorage.removeItem('efim_user');
+    sessionStorage.removeItem('efim_last_activity');
+    localStorage.removeItem('efim_token');
+    localStorage.removeItem('efim_user');
+    localStorage.removeItem('efim_last_activity');
+
+    if (window.appStore) {
+      window.appStore.clearCurrentUser();
+    }
+
+    window.location.replace('/?expired=1');
   },
 
   getCurrentUser() {
@@ -36,6 +132,8 @@ const Auth = {
     }
 
     window.appStore.setCurrentUser(user);
+    this.recordActivity();
+    this.resetInactivityTimer();
     this.updateUserUI();
     window.App.refreshCurrentView();
 
@@ -111,6 +209,8 @@ const Auth = {
     }
 
     window.appStore.setCurrentUser(user);
+    this.recordActivity();
+    this.resetInactivityTimer();
     this.updateUserUI();
     this.renderDemoSwitcher();
     window.App.refreshCurrentView();
@@ -123,11 +223,17 @@ const Auth = {
   },
 
   logout() {
+    if (this.inactivityTimer) {
+      clearTimeout(this.inactivityTimer);
+      this.inactivityTimer = null;
+    }
     // Clear JWT session
     sessionStorage.removeItem('efim_token');
     sessionStorage.removeItem('efim_user');
+    sessionStorage.removeItem('efim_last_activity');
     localStorage.removeItem('efim_token');
     localStorage.removeItem('efim_user');
+    localStorage.removeItem('efim_last_activity');
 
     // Also clear appStore session
     if (window.appStore) window.appStore.clearCurrentUser();

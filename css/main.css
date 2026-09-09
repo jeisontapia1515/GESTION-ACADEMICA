@@ -1054,6 +1054,25 @@ button, input, select, textarea {
     max-width: calc(100vw - 1rem);
   }
 
+  .notifications-wrapper {
+    position: static;
+  }
+
+  .notifications-dropdown {
+    position: absolute;
+    top: calc(100% + 6px);
+    left: 0.65rem;
+    right: 0.65rem;
+    width: auto;
+    max-width: calc(100vw - 1.3rem);
+    max-height: 75vh;
+    box-shadow: var(--shadow-lg), 0 12px 36px rgba(0, 0, 0, 0.45);
+  }
+
+  .notif-list {
+    max-height: calc(75vh - 90px);
+  }
+
   /* Contenedor principal en móviles */
   .main-container {
     padding: 1rem 0.65rem;
@@ -1434,5 +1453,26 @@ button, input, select, textarea {
   padding: 0.65rem 1rem;
   border-top: 1px solid var(--border-subtle);
   background: var(--bg-surface-elevated);
+}
+
+@media (max-width: 768px) {
+  .notifications-wrapper {
+    position: static;
+  }
+
+  .notifications-dropdown {
+    position: absolute;
+    top: calc(100% + 6px);
+    left: max(0.65rem, env(safe-area-inset-left));
+    right: max(0.65rem, env(safe-area-inset-right));
+    width: auto;
+    max-width: calc(100vw - 1.3rem);
+    max-height: 75vh;
+    box-shadow: var(--shadow-lg), 0 12px 36px rgba(0, 0, 0, 0.45);
+  }
+
+  .notif-list {
+    max-height: calc(75vh - 90px);
+  }
 }
 

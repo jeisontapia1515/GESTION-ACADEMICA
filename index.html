@@ -23,23 +23,35 @@
   <meta name="apple-mobile-web-app-title" content="ESFIM Investigación" />
   <link rel="apple-touch-icon" href="/img/logo.png" />
   <link rel="icon" type="image/png" href="/img/logo.png" />
-  <!-- Proteccion JWT: sesion aislada por pestana con sessionStorage -->
+  <!-- Protección JWT: sesión aislada y cierre automático tras 5 minutos de inactividad -->
   <script>
     (function() {
-      var token = sessionStorage.getItem('efim_token');
-      var user = sessionStorage.getItem('efim_user');
-      if (!token) {
-        var localToken = localStorage.getItem('efim_token');
-        var localUser = localStorage.getItem('efim_user');
-        if (localToken) {
-          token = localToken;
-          sessionStorage.setItem('esfim_token', localToken);
-          if (localUser) sessionStorage.setItem('esfim_user', localUser);
-        }
+      var INACTIVITY_TIMEOUT = 5 * 60 * 1000; // 5 minutos de inactividad
+      var token = sessionStorage.getItem('efim_token') || localStorage.getItem('efim_token');
+      var user = sessionStorage.getItem('efim_user') || localStorage.getItem('efim_user');
+      var lastActivity = sessionStorage.getItem('efim_last_activity') || localStorage.getItem('efim_last_activity');
+
+      var now = Date.now();
+      var isExpired = !lastActivity || (now - parseInt(lastActivity, 10)) > INACTIVITY_TIMEOUT;
+
+      if (!token || isExpired) {
+        sessionStorage.removeItem('efim_token');
+        sessionStorage.removeItem('efim_user');
+        sessionStorage.removeItem('efim_last_activity');
+        sessionStorage.removeItem('esfim_token');
+        sessionStorage.removeItem('esfim_user');
+        localStorage.removeItem('efim_token');
+        localStorage.removeItem('efim_user');
+        localStorage.removeItem('efim_last_activity');
+        window.location.replace(token ? '/?expired=1' : '/');
+        return;
       }
-      if (!token) {
-        window.location.replace('/');
-      }
+
+      // Sesión activa y válida: actualizar marca de actividad y sincronizar
+      sessionStorage.setItem('efim_token', token);
+      if (user) sessionStorage.setItem('efim_user', user);
+      sessionStorage.setItem('efim_last_activity', String(now));
+      localStorage.setItem('efim_last_activity', String(now));
     })();
   </script>
 </head>
@@ -243,7 +255,7 @@
               <option value="all">Todos los Estados</option>
               <option value="pendiente">Pendientes de inicio</option>
               <option value="en_progreso">En proceso</option>
-              <option value="bloqueado">Con obstáculos reportados</option>
+              <option value="bloqueado">Con dificultades reportadas</option>
               <option value="completado">Completadas / Aprobadas</option>
               <optgroup label="Filtrar por Docente" id="adminFilterDocentesOptgroup">
                 <!-- Se pobla dinámicamente desde MongoDB -->
@@ -255,7 +267,7 @@
               <option value="all">Todas las alertas</option>
               <option value="danger">🚨 Vencidas fuera de plazo</option>
               <option value="warning">⏳ Vencen hoy (<24h)</option>
-              <option value="issue">🛑 Con obstáculo reportado</option>
+              <option value="issue">🛑 Con dificultad reportada</option>
               <option value="completado">✅ Cumplidas</option>
             </select>
           </div>
@@ -282,7 +294,7 @@
         <div class="page-header">
           <div class="page-header-title">
             <h2>Panel de Trabajo - Docente Investigador</h2>
-            <p>Consulta las tareas y proyectos asignados por el Decano de Investigación. Reporta tus porcentajes de avance y notifica obstáculos.</p>
+            <p>Consulta las tareas y proyectos asignados por el Decano de Investigación. Reporta tus porcentajes de avance y notifica dificultades.</p>
           </div>
         </div>
 
@@ -303,7 +315,7 @@
             <select id="employeeFilterSelect" class="select-filter">
               <option value="all">Todas mis tareas</option>
               <option value="en_progreso">En proceso</option>
-              <option value="bloqueado">Con obstáculos reportados</option>
+              <option value="bloqueado">Con dificultades reportadas</option>
               <option value="completado">Completadas / Entregadas</option>
             </select>
           </div>
@@ -450,11 +462,11 @@
     </div>
   </div>
 
-  <!-- 3. MODAL: REPORTAR PROBLEMA / OBSTÁCULO (Docente) -->
+  <!-- 3. MODAL: REPORTAR PROBLEMA / DIFICULTAD (Docente) -->
   <div id="reportIssueModal" class="modal-overlay">
     <div class="modal-dialog">
       <div class="modal-header">
-        <h3 style="color:#fb7185;">🛑 Reportar Obstáculo / Novedad al Decano</h3>
+        <h3 style="color:#fb7185;">🛑 Reportar Dificultad / Novedad al Decano</h3>
         <button class="btn-close-modal">&times;</button>
       </div>
       <form id="reportIssueForm">
@@ -465,7 +477,7 @@
           </p>
 
           <div class="form-group">
-            <label for="reportIssueTypeSelect">Tipo de Obstáculo / Novedad *</label>
+            <label for="reportIssueTypeSelect">Tipo de Dificultad / Novedad *</label>
             <select id="reportIssueTypeSelect" class="form-control" required>
               <option value="Aval o Autorización de Decanatura Requerida">Aval o Autorización de Decanatura Requerida</option>
               <option value="Recursos, Presupuesto o Equipos de Laboratorio">Recursos, Presupuesto o Equipos de Laboratorio</option>
@@ -478,12 +490,12 @@
           </div>
 
           <div class="form-group">
-            <label for="reportIssueDescriptionInput">Descripción Detallada del Obstáculo *</label>
+            <label for="reportIssueDescriptionInput">Descripción Detallada de la Dificultad *</label>
             <textarea id="reportIssueDescriptionInput" class="form-control" rows="4" required placeholder="Explica con claridad la situación, qué te impide avanzar y qué apoyo o decisión requieres del Decano de Investigación..."></textarea>
           </div>
 
           <div class="modal-callout-danger">
-            ⚠️ Al reportar este obstáculo, la tarea se marcará en estado de novedad para que el Decano la verifique de inmediato.
+            ⚠️ Al reportar esta dificultad, la tarea se marcará en estado de novedad para que el Decano la verifique de inmediato.
           </div>
         </div>
         <div class="modal-footer">
@@ -494,11 +506,11 @@
     </div>
   </div>
 
-  <!-- 4. MODAL: VERIFICAR Y RESOLVER PROBLEMA (Decanatura) -->
+  <!-- 4. MODAL: VERIFICAR Y RESOLVER DIFICULTAD (Decanatura) -->
   <div id="verifyIssueModal" class="modal-overlay">
     <div class="modal-dialog">
       <div class="modal-header">
-        <h3>🔍 Verificación y Resolución de Obstáculo - Decanatura</h3>
+        <h3>🔍 Verificación y Resolución de Dificultad - Decanatura</h3>
         <button class="btn-close-modal">&times;</button>
       </div>
       <form id="verifyIssueForm">
@@ -518,7 +530,7 @@
 
           <div class="form-group">
             <label for="verifyIssueResolutionInput">Directrices e Instrucciones del Decano para el Docente *</label>
-            <textarea id="verifyIssueResolutionInput" class="form-control" rows="3" required placeholder="Escriba las orientaciones, autorizaciones concedidas o coordinaciones realizadas para superar el obstáculo..."></textarea>
+            <textarea id="verifyIssueResolutionInput" class="form-control" rows="3" required placeholder="Escriba las orientaciones, autorizaciones concedidas o coordinaciones realizadas para superar la dificultad..."></textarea>
           </div>
 
           <div class="form-group">

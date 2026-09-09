@@ -208,7 +208,7 @@ const AlertsEngine = {
             <strong>PROBLEMAS REPORTADOS:</strong> Hay <strong>${issueTasks.length}</strong> ${issueTasks.length === 1 ? 'tarea con reporte de bloqueo' : 'tareas con bloqueos'} que requieren verificación de Jefatura.
           </div>
         </div>
-        <button class="btn btn-sm btn-warning" onclick="filterByAlert('issue')">Ver Obstáculos</button>
+        <button class="btn btn-sm btn-warning" onclick="filterByAlert('issue')">Ver Dificultades</button>
       `;
       container.appendChild(banner);
     }

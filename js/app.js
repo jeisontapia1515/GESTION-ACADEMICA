@@ -417,7 +417,7 @@ const App = {
       issueBox.innerHTML = `
         <div class="task-reported-issue-box" style="padding: 1rem;">
           <div class="issue-box-title" style="margin-bottom: 0.35rem;">
-            <span>🛑</span> <strong>Obstáculo Reportado por el Docente (${task.issueReport.type}):</strong>
+            <span>🛑</span> <strong>Dificultad Reportada por el Docente (${task.issueReport.type}):</strong>
           </div>
           <p class="issue-box-desc" style="margin-bottom: 0.75rem;">"${task.issueReport.description}"</p>
           <div class="issue-box-subtext" style="margin-bottom: 0.5rem;">
@@ -555,7 +555,7 @@ const App = {
     } else if (isEmployeeAssigned) {
       const btnReport = document.createElement('button');
       btnReport.className = 'btn btn-warning btn-sm';
-      btnReport.innerHTML = '🛑 Reportar Obstáculo al Decano';
+      btnReport.innerHTML = '🛑 Reportar Dificultad al Decano';
       btnReport.onclick = () => {
         EmployeeModule.openReportIssueModal(task.id);
       };
@@ -687,6 +687,7 @@ const App = {
     if (isActive) {
       this.closeNotificationsDropdown();
     } else {
+      this.closeUserDropdown();
       this.renderNotificationsDropdown();
       dropdown.classList.add('active');
     }

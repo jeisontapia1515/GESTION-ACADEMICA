@@ -475,7 +475,7 @@ const EmailModule = {
             </div>
 
             <p style="font-size:13px; color:#475569;">
-              Le solicitamos ingresar oportunamente a la plataforma institucional para actualizar su porcentaje de avance, reportar avances periódicos o declarar novedades y obstáculos oportunamente.
+              Le solicitamos ingresar oportunamente a la plataforma institucional para actualizar su porcentaje de avance, reportar avances periódicos o declarar novedades y dificultades oportunamente.
             </p>
 
             <div style="text-align:center; margin:25px 0 10px;">
@@ -637,11 +637,11 @@ Favor acceder a la plataforma institucional en http://localhost:3000/ para repor
       <div style="font-family:sans-serif; padding:20px; background:#f8fafc; color:#1e293b;">
         <div style="max-width:580px; margin:0 auto; background:#fff; border-radius:8px; border:1px solid #e2e8f0; overflow:hidden;">
           <div style="background:#0f2942; color:#fff; padding:18px; text-align:center; border-bottom:3px solid #2ecc71;">
-            <h3 style="margin:0; font-size:16px;">✅ DIRECTRIZ DEL DECANO - OBSTÁCULO RESUELTO</h3>
+            <h3 style="margin:0; font-size:16px;">✅ DIRECTRIZ DEL DECANO - DIFICULTAD RESUELTA</h3>
           </div>
           <div style="padding:22px;">
             <p>Estimado(a) <strong>${docente.name}</strong>,</p>
-            <p>El Decano de Investigación ha revisado el obstáculo reportado para el compromiso <strong>"${task.title}"</strong> y emitió las siguientes directrices:</p>
+            <p>El Decano de Investigación ha revisado la dificultad reportada para el compromiso <strong>"${task.title}"</strong> y emitió las siguientes directrices:</p>
             <div style="background:#ecfdf5; border:1px solid #a7f3d0; border-radius:6px; padding:14px; margin:14px 0; color:#065f46;">
               <strong>Directriz de Jefatura:</strong><br/>
               ${resolution}

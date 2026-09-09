@@ -100,7 +100,7 @@ const AdminModule = {
               <span class="stat-lbl">En Curso</span>
             </div>
             <div class="docente-stat-divider"></div>
-            <div class="docente-stat-col" title="Compromisos con novedades u obstáculos">
+            <div class="docente-stat-col" title="Compromisos con novedades o dificultades">
               <span class="stat-num" style="color: ${issuesCount > 0 ? '#d946ef' : 'var(--text-muted)'};">${issuesCount}</span>
               <span class="stat-lbl">Novedad</span>
             </div>
@@ -193,11 +193,11 @@ const AdminModule = {
         </div>
       </div>
 
-      <div class="kpi-card issues" onclick="AdminModule.applyAlertFilter('issue')" style="cursor:pointer;" title="Filtrar obstáculos reportados por docentes">
+      <div class="kpi-card issues" onclick="AdminModule.applyAlertFilter('issue')" style="cursor:pointer;" title="Filtrar dificultades reportadas por docentes">
         <div class="kpi-icon-wrapper">🛑</div>
         <div class="kpi-details">
           <span class="kpi-value" style="color: #d946ef;">${issuesCount}</span>
-          <span class="kpi-label">Obstáculos por Resolver</span>
+          <span class="kpi-label">Dificultades por Resolver</span>
         </div>
       </div>
 
@@ -368,7 +368,7 @@ const AdminModule = {
         ${task.issueReport && task.issueReport.status === 'revision_pendiente' ? `
           <div class="task-reported-issue-box">
             <div class="issue-box-title">
-              <span>🛑</span> <strong>Obstáculo Reportado (${task.issueReport.type}):</strong>
+              <span>🛑</span> <strong>Dificultad Reportada (${task.issueReport.type}):</strong>
             </div>
             <div class="issue-box-desc">${task.issueReport.description}</div>
             <button class="btn btn-sm btn-warning" onclick="AdminModule.openVerifyIssueModal('${task.id}')" style="margin-top: 0.4rem; align-self: flex-start;">
@@ -466,7 +466,7 @@ const AdminModule = {
                 </td>
                 <td>
                   <strong style="cursor:pointer; color: var(--text-main);" onclick="App.openTaskDetailModal('${t.id}')">${t.title}</strong>
-                  ${t.issueReport ? '<span style="color:#d946ef; font-size:0.75rem; display:block;">🛑 Obstáculo reportado</span>' : ''}
+                  ${t.issueReport ? '<span style="color:#d946ef; font-size:0.75rem; display:block;">🛑 Dificultad reportada</span>' : ''}
                 </td>
                 <td>
                   ${assignees.length > 1 ? `
@@ -932,7 +932,7 @@ const AdminModule = {
     }
 
     AlertsEngine.showToast(
-      'Obstáculo Resuelto por Decanatura',
+      'Dificultad Resuelta por Decanatura',
       'La tarea ha sido desbloqueada con las directrices oficiales notificadas al docente.',
       'success'
     );

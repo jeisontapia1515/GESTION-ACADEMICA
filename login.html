@@ -197,6 +197,23 @@
     }
     .error-msg.show { display: flex; }
 
+    /* Inactivity Notice */
+    .notice-msg {
+      display: none;
+      background: rgba(245, 158, 11, 0.12);
+      border: 1px solid rgba(245, 158, 11, 0.35);
+      border-radius: 10px;
+      padding: 0.75rem 1rem;
+      color: #fde68a;
+      font-size: 0.83rem;
+      font-weight: 500;
+      align-items: center;
+      gap: 0.5rem;
+      margin-bottom: 0.25rem;
+      line-height: 1.35;
+    }
+    .notice-msg.show { display: flex; }
+
     /* Submit Button */
     .btn-login {
       margin-top: 0.5rem;
@@ -275,6 +292,12 @@
           <span class="badge-efim">ESFIM · Sistema Académico</span>
         </div>
       </div>
+    </div>
+
+    <!-- Inactivity Notice -->
+    <div id="loginNotice" class="notice-msg" role="status">
+      <span>⏱️</span>
+      <span id="loginNoticeText">Tu sesión se ha cerrado por seguridad tras 5 minutos de inactividad.</span>
     </div>
 
     <!-- Error Message -->
@@ -372,11 +395,14 @@
         const data = await res.json();
 
         if (data.success) {
+          const nowTs = String(Date.now());
           // Store token and user in sessionStorage (tab-isolated) and localStorage
           sessionStorage.setItem('efim_token', data.token);
           sessionStorage.setItem('efim_user', JSON.stringify(data.user));
+          sessionStorage.setItem('efim_last_activity', nowTs);
           localStorage.setItem('efim_token', data.token);
           localStorage.setItem('efim_user', JSON.stringify(data.user));
+          localStorage.setItem('efim_last_activity', nowTs);
 
           // Show brief success flash then redirect
           btn.innerHTML = '<span class="btn-text">✅ Acceso autorizado...</span>';
@@ -396,13 +422,45 @@
       }
     });
 
-    // If this specific tab already has an active session, redirect to app
-    const existingToken = sessionStorage.getItem('efim_token');
-    if (existingToken) {
+    // Check if redirected due to inactivity
+    const urlParams = new URLSearchParams(window.location.search);
+    if (urlParams.get('expired') === '1') {
+      const noticeDiv = document.getElementById('loginNotice');
+      if (noticeDiv) noticeDiv.classList.add('show');
+      window.history.replaceState({}, document.title, window.location.pathname);
+    }
+
+    // Verify existing session against 5m inactivity timeout
+    const INACTIVITY_TIMEOUT_MS = 5 * 60 * 1000;
+    const existingToken = sessionStorage.getItem('efim_token') || localStorage.getItem('efim_token');
+    const lastActivity = sessionStorage.getItem('efim_last_activity') || localStorage.getItem('efim_last_activity');
+    const now = Date.now();
+
+    function clearSession() {
+      sessionStorage.removeItem('efim_token');
+      sessionStorage.removeItem('efim_user');
+      sessionStorage.removeItem('efim_last_activity');
+      localStorage.removeItem('efim_token');
+      localStorage.removeItem('efim_user');
+      localStorage.removeItem('efim_last_activity');
+    }
+
+    if (existingToken && lastActivity && (now - parseInt(lastActivity, 10)) <= INACTIVITY_TIMEOUT_MS) {
       fetch('/api/auth/me', { headers: { Authorization: 'Bearer ' + existingToken } })
         .then(r => r.json())
-        .then(d => { if (d.success) window.location.href = '/app'; })
+        .then(d => {
+          if (d.success) {
+            const nowTs = String(Date.now());
+            sessionStorage.setItem('efim_last_activity', nowTs);
+            localStorage.setItem('efim_last_activity', nowTs);
+            window.location.href = '/app';
+          } else {
+            clearSession();
+          }
+        })
         .catch(() => {});
+    } else {
+      clearSession();
     }
 
     // Register Service Worker for PWA

@@ -122,10 +122,15 @@ class AppStore {
       return sessionStorage.getItem('efim_token') || localStorage.getItem('efim_token');
     };
 
-    // Validar sesion con token JWT
+    // Validar sesión con token JWT y límite de inactividad de 5 minutos
+    const INACTIVITY_TIMEOUT_MS = 5 * 60 * 1000;
     const token = this.getToken();
+    const lastActivity = sessionStorage.getItem('efim_last_activity') || localStorage.getItem('efim_last_activity');
+    const now = Date.now();
+    const isInactive = !lastActivity || (now - parseInt(lastActivity, 10)) > INACTIVITY_TIMEOUT_MS;
+
     const authUser = sessionStorage.getItem('efim_user') || localStorage.getItem('efim_user');
-    if (token && authUser) {
+    if (token && authUser && !isInactive) {
       try {
         this.setCurrentUser(JSON.parse(authUser));
       } catch (e) {
@@ -279,9 +284,11 @@ class AppStore {
     sessionStorage.removeItem(STORAGE_KEYS.CURRENT_USER);
     sessionStorage.removeItem('efim_user');
     sessionStorage.removeItem('efim_token');
+    sessionStorage.removeItem('efim_last_activity');
     localStorage.removeItem(STORAGE_KEYS.CURRENT_USER);
     localStorage.removeItem('efim_user');
     localStorage.removeItem('efim_token');
+    localStorage.removeItem('efim_last_activity');
   }
 
   // Tasks
@@ -616,8 +623,8 @@ class AppStore {
     admins.forEach(admin => {
       this.addNotification({
         targetUserId: admin.id,
-        title: '🚨 Obstáculo Reportado por Empleado',
-        message: `${currentUser ? currentUser.name : 'Un empleado'} reportó un problema en la tarea "${task.title}": ${issueDescription}`,
+        title: '🚨 Dificultad Reportada por Docente',
+        message: `${currentUser ? currentUser.name : 'Un docente'} reportó una dificultad en el compromiso "${task.title}": ${issueDescription}`,
         type: 'danger',
         taskId: task.id
       });
@@ -644,8 +651,8 @@ class AppStore {
     const comment = {
       id: 'c-' + Date.now(),
       authorId: currentUser ? currentUser.id : 'admin-1',
-      authorName: currentUser ? currentUser.name : 'Jefatura',
-      text: `[PROBLEMA RESUELTO POR JEFATURA]: ${resolutionNote}${newDueDate ? ` (Nueva fecha límite: ${new Date(newDueDate).toLocaleString()})` : ''}`,
+      authorName: currentUser ? currentUser.name : 'Decanatura',
+      text: `[DIFICULTAD RESUELTA POR DECANATURA]: ${resolutionNote}${newDueDate ? ` (Nueva fecha límite: ${new Date(newDueDate).toLocaleString()})` : ''}`,
       timestamp: new Date().toISOString(),
       type: 'resolution'
     };
@@ -659,8 +666,8 @@ class AppStore {
     // Notify assigned employee
     this.addNotification({
       targetUserId: task.assignedTo,
-      title: '✅ Problema Verificado y Resuelto por Jefatura',
-      message: `Jefatura ha verificado y resuelto tu reporte en "${task.title}": ${resolutionNote}`,
+      title: '✅ Dificultad Verificada y Resuelta por Decanatura',
+      message: `La Decanatura ha verificado y resuelto tu reporte en "${task.title}": ${resolutionNote}`,
       type: 'success',
       taskId: task.id
     });
