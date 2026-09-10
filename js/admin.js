@@ -250,8 +250,10 @@ const AdminModule = {
         const matchIds = [empId, targetEmp?.id, targetEmp?._id, targetEmp?.email].filter(Boolean).map(x => String(x).toLowerCase());
         const assignees = Array.isArray(t.assignedTo) ? t.assignedTo : [t.assignedTo];
         filterMatch = t.assignedTo === 'all' || assignees.some(a => matchIds.includes(String(typeof a === 'object' ? (a.id || a._id || a.email || '') : a).toLowerCase()));
+      } else if (this.currentFilter === 'borrador') {
+        filterMatch = Boolean(t.status === 'borrador' || t.isDraft || !t.assignedTo || (Array.isArray(t.assignedTo) && t.assignedTo.length === 0));
       } else if (this.currentFilter !== 'all') {
-        filterMatch = t.status === this.currentFilter;
+        filterMatch = t.status === this.currentFilter && !t.isDraft && t.status !== 'borrador';
       }
 
       // Alert Filter
@@ -316,16 +318,26 @@ const AdminModule = {
     const assignees = this.getTaskAssignees(task);
     const alert = AlertsEngine.getTaskAlertStatus(task);
     const areaInfo = (window.DECANATURA_AREAS && window.DECANATURA_AREAS[task.area]) || null;
-    const dueDateFormatted = new Date(task.dueDate).toLocaleString('es-ES', {
+    const isDraft = Boolean(task.isDraft || task.status === 'borrador' || !task.assignedTo || (Array.isArray(task.assignedTo) && task.assignedTo.length === 0));
+    const isGroup = !isDraft && (task.area === 'decanatura' || task.assignedTo === 'all' || assignees.length > 1);
+
+    if (isGroup) {
+      window.appStore.ensureAssigneeProgress(task);
+    }
+    const memberProgressList = isGroup ? (task.assigneeProgress || []) : [];
+
+    const dueDateFormatted = task.dueDate ? new Date(task.dueDate).toLocaleString('es-ES', {
       day: '2-digit',
       month: 'short',
       year: 'numeric',
       hour: '2-digit',
       minute: '2-digit'
-    });
+    }) : 'Por definir';
 
     let cardBorderClass = '';
-    if (task.issueReport && task.issueReport.status === 'revision_pendiente') {
+    if (isDraft) {
+      cardBorderClass = 'alert-border-draft';
+    } else if (task.issueReport && task.issueReport.status === 'revision_pendiente') {
       cardBorderClass = 'alert-border-issue';
     } else if (alert.level === 'danger') {
       cardBorderClass = 'alert-border-danger';
@@ -356,7 +368,12 @@ const AdminModule = {
               </span>
             ` : ''}
             <span class="badge badge-priority-${task.priority}">${priorityLabel}</span>
-            <span class="badge ${alert.badgeClass}">${alert.label}</span>
+            ${isDraft ? `
+              <span class="badge badge-warning" style="font-weight:700;">📝 Borrador · Por Asignar</span>
+            ` : `
+              <span class="badge ${alert.badgeClass}">${alert.label}</span>
+              ${isGroup ? '<span class="badge badge-info" style="font-size:0.68rem; padding:1px 6px;">👥 Grupal</span>' : ''}
+            `}
           </div>
           <button class="btn-icon" onclick="App.openTaskDetailModal('${task.id}')" title="Ver detalles e historial">
             👁️
@@ -384,18 +401,35 @@ const AdminModule = {
         <!-- Progress bar -->
         <div class="progress-container">
           <div class="progress-header">
-            <span>Porcentaje de Avance</span>
+            <span>${isGroup ? 'Porcentaje de Avance (Promedio Grupal)' : 'Porcentaje de Avance'}</span>
             <span style="font-family:var(--font-mono); font-weight:700;">${task.progress}%</span>
           </div>
           <div class="progress-bar-bg">
             <div class="progress-bar-fill ${task.progress === 100 ? 'completado' : ''}" style="width: ${task.progress}%;"></div>
           </div>
+
+          ${isGroup && memberProgressList.length > 0 ? `
+            <div class="group-progress-micro-pills" style="display:flex; flex-wrap:wrap; gap:0.3rem; margin-top:0.4rem;">
+              ${memberProgressList.slice(0, 5).map(mp => {
+                const shortName = mp.userName ? mp.userName.split(' ')[0] : 'Docente';
+                const color = mp.progress === 100 ? '#10b981' : (mp.progress > 0 ? '#2563eb' : '#94a3b8');
+                return `
+                  <span class="member-pill" style="font-size:0.69rem; padding:1px 5px; border-radius:4px; background:var(--surface-2); border:1px solid ${color}; color:var(--text-main);" title="${mp.userName} (${mp.userEmail}): ${mp.progress}%">
+                    ${shortName}: <strong style="color:${color};">${mp.progress}%</strong>
+                  </span>
+                `;
+              }).join('')}
+              ${memberProgressList.length > 5 ? `<span style="font-size:0.7rem; color:var(--text-muted); align-self:center;">+${memberProgressList.length - 5} más</span>` : ''}
+            </div>
+          ` : ''}
         </div>
 
         <!-- Metadata -->
         <div class="task-card-meta">
-          <div class="task-assignee" title="${assigneesNames}">
-            ${assignees.length > 1 ? `
+          <div class="task-assignee" title="${assigneesNames || 'Sin asignar'}">
+            ${isDraft ? `
+              <span style="color:var(--text-muted); font-size:0.82rem; font-style:italic;">👤 Pendiente de designar responsable</span>
+            ` : (assignees.length > 1 ? `
               <div class="assignees-avatar-stack">
                 ${assignees.slice(0, 3).map(a => this.getAvatarHtml(a.avatar, a.name ? a.name.slice(0, 2).toUpperCase() : '??', '24px', 'assignee-avatar')).join('')}
               </div>
@@ -405,7 +439,7 @@ const AdminModule = {
             ` : `
               ${this.getAvatarHtml(assignees[0]?.avatar, assignees[0]?.name ? assignees[0].name.slice(0, 2).toUpperCase() : '??', '24px', 'assignee-avatar')}
               <span>${assignees[0] ? assignees[0].name : 'Sin asignar'}</span>
-            `}
+            `)}
           </div>
 
           <div class="task-deadline ${alert.level === 'danger' ? 'urgent' : (alert.level === 'warning' ? 'warning' : '')}" title="Fecha y Hora de Entrega">
@@ -415,7 +449,14 @@ const AdminModule = {
 
         <!-- Quick Actions for Boss -->
         <div class="task-actions-bar" style="display:flex; gap:0.35rem; flex-wrap:wrap; align-items:center;">
-          ${(task.status === 'completado' || task.progress === 100) ? `
+          ${isDraft ? `
+            <button class="btn btn-sm btn-primary" onclick="AdminModule.openAssignDraftModal('${task.id}')" title="Asignar docente(s) responsable(s) y despachar la tarea">
+              👤 Asignar Responsable(s)
+            </button>
+            <button class="btn btn-sm btn-danger" onclick="AdminModule.confirmDeleteTask('${task.id}')" title="Descartar borrador">
+              🗑️
+            </button>
+          ` : (task.status === 'completado' || task.progress === 100 ? `
             <button class="btn btn-sm btn-danger" onclick="AdminModule.confirmDeleteTask('${task.id}')" title="Eliminar tarea cumplida de MongoDB para liberar espacio">
               🗑️ Eliminar
             </button>
@@ -426,7 +467,7 @@ const AdminModule = {
             <button class="btn btn-secondary btn-sm" onclick="AdminModule.openReminderModal('${task.id}')" title="Enviar recordatorio formal de Decanatura">
               ⏰ Recordatorio
             </button>
-          `}
+          `)}
           <button class="btn btn-primary btn-sm" onclick="App.openTaskDetailModal('${task.id}')" style="margin-left:auto;">
             Detalles (${(task.comments || []).length})
           </button>
@@ -455,9 +496,13 @@ const AdminModule = {
             const assignees = this.getTaskAssignees(t);
             const alert = AlertsEngine.getTaskAlertStatus(t);
             const areaInfo = (window.DECANATURA_AREAS && window.DECANATURA_AREAS[t.area]) || null;
-            const dueDateFormatted = new Date(t.dueDate).toLocaleString('es-ES', {
+            const isDraft = Boolean(t.isDraft || t.status === 'borrador' || !t.assignedTo || (Array.isArray(t.assignedTo) && t.assignedTo.length === 0));
+            const isGroup = !isDraft && (t.area === 'decanatura' || t.assignedTo === 'all' || assignees.length > 1);
+            if (isGroup) window.appStore.ensureAssigneeProgress(t);
+
+            const dueDateFormatted = t.dueDate ? new Date(t.dueDate).toLocaleString('es-ES', {
               day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit'
-            });
+            }) : 'Sin definir';
 
             return `
               <tr>
@@ -470,10 +515,13 @@ const AdminModule = {
                 </td>
                 <td>
                   <strong style="cursor:pointer; color: var(--text-main);" onclick="App.openTaskDetailModal('${t.id}')">${t.title}</strong>
+                  ${isDraft ? '<span class="badge badge-warning" style="font-size:0.68rem; margin-left:0.3rem;">Borrador</span>' : ''}
                   ${t.issueReport ? '<span style="color:#d946ef; font-size:0.75rem; display:block;">🛑 Dificultad reportada</span>' : ''}
                 </td>
                 <td>
-                  ${assignees.length > 1 ? `
+                  ${isDraft ? `
+                    <span style="color:var(--text-muted); font-size:0.8rem; font-style:italic;">Por Asignar</span>
+                  ` : (assignees.length > 1 ? `
                     <div style="display:flex; align-items:center; gap:0.4rem;" title="${assignees.map(a => a.name + ' (' + a.email + ')').join('\n')}">
                       <div class="assignees-avatar-stack">
                         ${assignees.slice(0, 3).map(a => this.getAvatarHtml(a.avatar, a.name ? a.name.slice(0, 2).toUpperCase() : '??', '22px', 'assignee-avatar')).join('')}
@@ -487,11 +535,13 @@ const AdminModule = {
                       ${this.getAvatarHtml(assignees[0]?.avatar, assignees[0]?.name ? assignees[0].name.slice(0, 2).toUpperCase() : '??', '22px', 'assignee-avatar')}
                       <span style="font-size:0.85rem;">${assignees[0] ? assignees[0].name : 'Sin asignar'}</span>
                     </div>
-                  `}
+                  `)}
                 </td>
                 <td><span class="badge badge-priority-${t.priority}">${{urgent:'Urgente',urgente:'Urgente',high:'Alta',alta:'Alta',medium:'Media',media:'Media',low:'Baja',baja:'Baja'}[String(t.priority || '').toLowerCase()] || 'Media'}</span></td>
                 <td><span style="font-family: var(--font-mono); font-size:0.8rem;">${dueDateFormatted}</span></td>
-                <td><span class="badge ${alert.badgeClass}">${alert.label}</span></td>
+                <td>
+                  ${isDraft ? '<span class="badge badge-warning">📝 Por Asignar</span>' : `<span class="badge ${alert.badgeClass}">${alert.label}</span>`}
+                </td>
                 <td style="width: 120px;">
                   <div style="display:flex; align-items:center; gap:0.5rem;">
                     <div class="progress-bar-bg" style="height:5px;">
@@ -499,14 +549,22 @@ const AdminModule = {
                     </div>
                     <span style="font-size:0.75rem; font-family:var(--font-mono);">${t.progress}%</span>
                   </div>
+                  ${isGroup && (t.assigneeProgress || []).length > 0 ? `
+                    <span style="font-size:0.68rem; color:var(--primary); font-weight:600; display:block;" title="Avance grupal promediado de ${t.assigneeProgress.length} docentes">
+                      👥 ${t.assigneeProgress.filter(a => a.progress === 100).length}/${t.assigneeProgress.length} listos
+                    </span>
+                  ` : ''}
                 </td>
                 <td style="text-align: right; white-space:nowrap;">
-                  ${(t.status === 'completado' || t.progress === 100) ? `
+                  ${isDraft ? `
+                    <button class="btn btn-sm btn-primary" onclick="AdminModule.openAssignDraftModal('${t.id}')" title="Asignar Responsable(s)">👤 Asignar</button>
+                    <button class="btn btn-sm btn-danger" onclick="AdminModule.confirmDeleteTask('${t.id}')" title="Descartar borrador">🗑️</button>
+                  ` : ((t.status === 'completado' || t.progress === 100) ? `
                     <button class="btn btn-sm btn-danger" onclick="AdminModule.confirmDeleteTask('${t.id}')" title="Eliminar tarea cumplida de MongoDB">🗑️</button>
                     <button class="btn btn-sm btn-secondary" onclick="AdminModule.archiveTask('${t.id}')" title="Archivar compromiso">📦</button>
                   ` : `
                     <button class="btn btn-sm btn-secondary" onclick="AdminModule.openReminderModal('${t.id}')" title="Enviar recordatorio oficial">⏰</button>
-                  `}
+                  `)}
                   <button class="btn btn-sm btn-primary" onclick="App.openTaskDetailModal('${t.id}')">Ver</button>
                 </td>
               </tr>
@@ -591,6 +649,12 @@ const AdminModule = {
       areaSelect.value = 'formativa';
     }
 
+    const draftCb = document.getElementById('taskIsDraftCheckbox');
+    if (draftCb) {
+      draftCb.checked = false;
+      this.toggleDraftMode(false);
+    }
+
     // Populate all registered teachers as checkboxes
     this.populateAssigneesChecklist();
 
@@ -619,6 +683,21 @@ const AdminModule = {
     }
 
     modal.classList.add('active');
+  },
+
+  toggleDraftMode(isDraft) {
+    const assigneesGroup = document.getElementById('assigneesFormGroup');
+    const submitBtn = document.getElementById('btnSubmitTask');
+    const draftBtn = document.getElementById('btnSaveDraftTask');
+    if (isDraft) {
+      if (submitBtn) submitBtn.textContent = '💾 Guardar Tarea como Borrador';
+      if (draftBtn) draftBtn.style.display = 'none';
+      if (assigneesGroup) assigneesGroup.style.opacity = '0.75';
+    } else {
+      if (submitBtn) submitBtn.textContent = '🚀 Delegar y Despachar Notificaciones Simultáneas';
+      if (draftBtn) draftBtn.style.display = 'inline-block';
+      if (assigneesGroup) assigneesGroup.style.opacity = '1';
+    }
   },
 
   populateAssigneesChecklist() {
@@ -718,8 +797,89 @@ const AdminModule = {
     checklistContainer.appendChild(row);
   },
 
+  async handleSaveDraftClick(e) {
+    if (e && e.preventDefault) e.preventDefault();
+    const title = document.getElementById('taskTitleInput')?.value.trim();
+    const description = document.getElementById('taskDescInput')?.value.trim();
+    const area = document.getElementById('taskAreaSelect')?.value || 'formativa';
+    const priority = document.getElementById('taskPrioritySelect')?.value || 'alta';
+    const dueDate = document.getElementById('taskDueDateInput')?.value;
+
+    if (!title || !description) {
+      AlertsEngine.showToast('Datos Incompletos', 'Ingrese al menos el título y la descripción para guardar el borrador.', 'warning');
+      return;
+    }
+
+    // Collect any checked docentes (optional in draft mode)
+    const checkboxes = document.querySelectorAll('input[name="assigneeDocenteCheckbox"]:checked');
+    const customEmailsInput = document.getElementById('customAssigneeEmailsInput');
+    const assignedIds = [];
+
+    checkboxes.forEach(cb => {
+      let u = window.appStore.getUserById(cb.value);
+      if (!u && cb.dataset.email) u = window.appStore.getUserById(cb.dataset.email);
+      const uId = (u && (u.id || u._id)) || cb.value;
+      if (!assignedIds.includes(uId)) assignedIds.push(uId);
+    });
+
+    const customEmails = (customEmailsInput ? customEmailsInput.value : '')
+      .split(/[\s,;]+/)
+      .map(e => e.trim())
+      .filter(e => e.includes('@'));
+
+    customEmails.forEach(emailVal => {
+      let u = window.appStore.getUsers().find(usr => usr.email && usr.email.toLowerCase() === emailVal.toLowerCase());
+      const uId = (u && (u.id || u._id)) || emailVal;
+      if (!assignedIds.includes(uId)) assignedIds.push(uId);
+    });
+
+    // Extract checklist
+    const checklistInputs = document.querySelectorAll('#checklistItemsContainer input[type="text"]');
+    const checklist = [];
+    checklistInputs.forEach((inp, idx) => {
+      const val = inp.value.trim();
+      if (val) {
+        checklist.push({
+          id: 'chk-' + Date.now() + '-' + idx,
+          text: val,
+          completed: false
+        });
+      }
+    });
+
+    const newTask = await window.appStore.createTask({
+      title,
+      description,
+      area,
+      assignedTo: assignedIds.length === 1 ? assignedIds[0] : (assignedIds.length > 1 ? assignedIds : []),
+      priority,
+      dueDate: dueDate ? new Date(dueDate).toISOString() : new Date(Date.now() + 86400000 * 2).toISOString(),
+      checklist,
+      isDraft: true,
+      status: 'borrador'
+    });
+
+    document.getElementById('createTaskModal').classList.remove('active');
+    document.getElementById('createTaskForm').reset();
+    this.toggleDraftMode(false);
+
+    AlertsEngine.showToast(
+      'Borrador Guardado',
+      `El compromiso "${newTask.title}" se guardó en borrador. Queda en el panel de Decanatura listo para asignar cuando determinen a quién compete.`,
+      'success',
+      6000
+    );
+
+    this.render();
+  },
+
   async handleCreateTaskSubmit(e) {
     e.preventDefault();
+    const isDraftChecked = Boolean(document.getElementById('taskIsDraftCheckbox')?.checked);
+    if (isDraftChecked) {
+      return this.handleSaveDraftClick(e);
+    }
+
     const title = document.getElementById('taskTitleInput').value.trim();
     const description = document.getElementById('taskDescInput').value.trim();
     const area = document.getElementById('taskAreaSelect')?.value || 'formativa';
@@ -789,7 +949,7 @@ const AdminModule = {
     });
 
     if (assignedIds.length === 0) {
-      AlertsEngine.showToast('Docentes Requeridos', 'Por favor seleccione al menos un docente o ingrese un correo para despachar la tarea.', 'warning');
+      AlertsEngine.showToast('Docentes Requeridos', 'Seleccione al menos un docente para despachar inmediatamente, o use "Guardar Borrador" para asignarla después.', 'warning');
       return;
     }
 
@@ -814,11 +974,14 @@ const AdminModule = {
       assignedTo: assignedIds.length === 1 ? assignedIds[0] : assignedIds,
       priority,
       dueDate: new Date(dueDate).toISOString(),
-      checklist
+      checklist,
+      isDraft: false,
+      status: 'pendiente'
     });
 
     document.getElementById('createTaskModal').classList.remove('active');
     document.getElementById('createTaskForm').reset();
+    this.toggleDraftMode(false);
 
     const recipientSummary = targetDocentes.map(d => d.name).join(', ');
     AlertsEngine.showToast(
@@ -831,6 +994,181 @@ const AdminModule = {
     // Dispatch institutional email notification sequentially to ALL target docentes
     if (window.EmailModule && targetDocentes.length > 0) {
       await EmailModule.notifyTaskAssignmentMulti(newTask, targetDocentes);
+    }
+
+    this.render();
+  },
+
+  // Open Draft Assignment Modal
+  openAssignDraftModal(taskId) {
+    const task = window.appStore.getTaskById(taskId);
+    if (!task) return;
+
+    const modal = document.getElementById('assignDraftModal');
+    if (!modal) return;
+
+    document.getElementById('assignDraftTaskId').value = task.id;
+    document.getElementById('assignDraftTaskTitle').textContent = task.title;
+    document.getElementById('assignDraftTaskDesc').textContent = task.description;
+
+    const prio = document.getElementById('assignDraftPrioritySelect');
+    if (prio && task.priority) prio.value = task.priority;
+
+    const dueInput = document.getElementById('assignDraftDueDateInput');
+    if (dueInput) {
+      if (task.dueDate) {
+        const d = new Date(task.dueDate);
+        dueInput.value = d.toISOString().slice(0, 16);
+      } else {
+        const tomorrow = new Date();
+        tomorrow.setDate(tomorrow.getDate() + 1);
+        tomorrow.setHours(18, 0, 0, 0);
+        dueInput.value = tomorrow.toISOString().slice(0, 16);
+      }
+    }
+
+    const customInput = document.getElementById('assignDraftCustomEmailsInput');
+    if (customInput) customInput.value = '';
+
+    this.populateDraftAssigneesChecklist(task);
+    modal.classList.add('active');
+  },
+
+  populateDraftAssigneesChecklist(task) {
+    const container = document.getElementById('assignDraftCheckboxContainer');
+    if (!container) return;
+    const allUsers = window.appStore.getUsers();
+    const assignableUsers = allUsers.filter(u => u.isActive !== false);
+
+    const currentlyAssigned = Array.isArray(task?.assignedTo) ? task.assignedTo : [task?.assignedTo].filter(Boolean);
+    const assignedStrs = currentlyAssigned.map(x => String(typeof x === 'object' ? (x?.id || x?._id || x?.email) : x).toLowerCase());
+
+    container.innerHTML = assignableUsers.map(emp => {
+      const uId = emp.id || emp._id;
+      const areaObj = emp.area && window.DECANATURA_AREAS[emp.area] ? window.DECANATURA_AREAS[emp.area] : null;
+      let areaBadge = areaObj ? `<span class="badge ${areaObj.badgeClass}" style="font-size:0.65rem; padding:1px 6px;">${areaObj.icon} ${areaObj.name}</span>` : '';
+      if (emp.role === 'admin') {
+        const isAdminDecano = (emp.name || '').toLowerCase().includes('perdomo') || (emp.email || '').includes('decano');
+        areaBadge = `<span class="badge badge-warning" style="font-size:0.65rem; padding:1px 6px;">🛡️ ${isAdminDecano ? 'Decano' : 'Gestor'}</span>`;
+      }
+      const isChecked = assignedStrs.includes(String(uId).toLowerCase()) || (emp.email && assignedStrs.includes(String(emp.email).toLowerCase()));
+
+      return `
+        <label class="assignee-checkbox-row" style="display:flex; align-items:center; gap:0.5rem; padding:0.35rem 0.5rem; border-radius:6px; background:var(--surface-1); cursor:pointer; font-size:0.83rem; transition:background 0.15s; border:1px solid transparent;">
+          <input type="checkbox" name="assignDraftDocenteCheckbox" value="${uId}" data-email="${emp.email}" data-name="${emp.name}" ${isChecked ? 'checked' : ''} onchange="AdminModule.updateDraftAssigneesSummary()" style="cursor:pointer; width:16px; height:16px;" />
+          <div style="flex:1; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:0.25rem;">
+            <div>
+              <strong style="color:var(--text-main);">${emp.name}</strong>
+              <span style="color:var(--text-muted); font-size:0.75rem; margin-left:0.3rem;">&lt;${emp.email}&gt;</span>
+            </div>
+            ${areaBadge}
+          </div>
+        </label>
+      `;
+    }).join('');
+
+    this.updateDraftAssigneesSummary();
+  },
+
+  selectAllDraftAssignees(selectAll = true) {
+    const checkboxes = document.querySelectorAll('input[name="assignDraftDocenteCheckbox"]');
+    checkboxes.forEach(cb => { cb.checked = selectAll; });
+    this.updateDraftAssigneesSummary();
+  },
+
+  updateDraftAssigneesSummary() {
+    const checkboxes = document.querySelectorAll('input[name="assignDraftDocenteCheckbox"]:checked');
+    const customEmailsInput = document.getElementById('assignDraftCustomEmailsInput');
+    const countBadge = document.getElementById('assignDraftCountBadge');
+    const preview = document.getElementById('assignDraftListPreview');
+
+    const selectedDocentes = [];
+    checkboxes.forEach(cb => {
+      selectedDocentes.push({
+        id: cb.value,
+        name: cb.getAttribute('data-name'),
+        email: cb.getAttribute('data-email')
+      });
+    });
+
+    const customEmails = (customEmailsInput ? customEmailsInput.value : '')
+      .split(/[\s,;]+/)
+      .map(e => e.trim())
+      .filter(e => e.includes('@'));
+
+    const totalCount = selectedDocentes.length + customEmails.length;
+    if (countBadge) {
+      countBadge.textContent = `${totalCount} seleccionado${totalCount === 1 ? '' : 's'}`;
+      countBadge.className = totalCount > 0 ? 'badge badge-info' : 'badge badge-outline';
+    }
+
+    if (preview) {
+      if (totalCount === 0) {
+        preview.textContent = 'Ningún docente seleccionado.';
+      } else {
+        const allNamesOrEmails = [
+          ...selectedDocentes.map(d => `<strong>${d.name}</strong> (<code>${d.email}</code>)`),
+          ...customEmails.map(e => `<code>${e}</code>`)
+        ];
+        preview.innerHTML = allNamesOrEmails.join(', ');
+      }
+    }
+  },
+
+  async handleConfirmDraftAssignment(e) {
+    e.preventDefault();
+    const taskId = document.getElementById('assignDraftTaskId').value;
+    const priority = document.getElementById('assignDraftPrioritySelect')?.value;
+    const dueDate = document.getElementById('assignDraftDueDateInput')?.value;
+
+    const checkboxes = document.querySelectorAll('input[name="assignDraftDocenteCheckbox"]:checked');
+    const customEmailsInput = document.getElementById('assignDraftCustomEmailsInput');
+
+    const targetDocentes = [];
+    checkboxes.forEach(cb => {
+      let u = window.appStore.getUserById(cb.value);
+      if (!u && cb.dataset.email) u = window.appStore.getUserById(cb.dataset.email);
+      targetDocentes.push({
+        id: (u && (u.id || u._id)) || cb.value,
+        name: (u && u.name) || cb.dataset.name || 'Docente Investigador',
+        email: (u && u.email) || cb.dataset.email
+      });
+    });
+
+    const customEmails = (customEmailsInput ? customEmailsInput.value : '')
+      .split(/[\s,;]+/)
+      .map(e => e.trim())
+      .filter(e => e.includes('@'));
+
+    customEmails.forEach(emailVal => {
+      let existingUser = window.appStore.getUsers().find(u => u.email && u.email.toLowerCase() === emailVal.toLowerCase());
+      if (!existingUser) {
+        const cleanName = emailVal.split('@')[0].split('.').map(p => p.charAt(0).toUpperCase() + p.slice(1)).join(' ');
+        existingUser = window.appStore.createEmployee({
+          name: `Docente ${cleanName}`,
+          email: emailVal,
+          department: 'Decanatura de Investigación ESFIM'
+        });
+      }
+      const uId = existingUser.id || existingUser._id || emailVal;
+      if (!targetDocentes.some(d => d.id === uId)) {
+        targetDocentes.push({ id: uId, name: existingUser.name, email: existingUser.email });
+      }
+    });
+
+    if (targetDocentes.length === 0) {
+      AlertsEngine.showToast('Docentes Requeridos', 'Seleccione al menos un docente para asignar el compromiso.', 'warning');
+      return;
+    }
+
+    const updatedTask = await window.appStore.assignDraftTask(taskId, targetDocentes, { priority, dueDate });
+    document.getElementById('assignDraftModal').classList.remove('active');
+
+    const names = targetDocentes.map(d => d.name).join(', ');
+    AlertsEngine.showToast('Compromiso Asignado', `Se asignó a ${targetDocentes.length} docente(s): ${names}. Notificaciones despachadas.`, 'success', 6000);
+
+    if (window.EmailModule && targetDocentes.length > 0) {
+      await EmailModule.notifyTaskAssignmentMulti(updatedTask, targetDocentes);
     }
 
     this.render();

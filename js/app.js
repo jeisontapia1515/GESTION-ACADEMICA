@@ -395,6 +395,9 @@ const App = {
     // Header badges
     const badgesContainer = document.getElementById('detailTaskBadges');
     const areaInfo = (window.DECANATURA_AREAS && window.DECANATURA_AREAS[task.area]) || null;
+    const isDraft = Boolean(task.isDraft || task.status === 'borrador' || !task.assignedTo || (Array.isArray(task.assignedTo) && task.assignedTo.length === 0));
+    const isGroup = !isDraft && (task.area === 'decanatura' || task.assignedTo === 'all' || assignees.length > 1);
+
     badgesContainer.innerHTML = `
       ${areaInfo ? `
         <span class="badge ${areaInfo.badgeClass}" title="${areaInfo.subtitle}">
@@ -402,19 +405,50 @@ const App = {
         </span>
       ` : ''}
       <span class="badge badge-priority-${task.priority}">${{urgent:'URGENTE',urgente:'URGENTE',high:'ALTA',alta:'ALTA',medium:'MEDIA',media:'MEDIA',low:'BAJA',baja:'BAJA'}[String(task.priority || '').toLowerCase()] || 'MEDIA'}</span>
-      <span class="badge ${alert.badgeClass}">${alert.label}</span>
-      <span class="badge badge-status-${task.status}">ESTADO: ${task.status.replace(/_/g, ' ').toUpperCase()}</span>
+      ${isDraft ? `
+        <span class="badge badge-warning" style="font-weight:700;">📝 Borrador · Por Asignar</span>
+      ` : `
+        <span class="badge ${alert.badgeClass}">${alert.label}</span>
+        ${isGroup ? '<span class="badge badge-info" style="font-size:0.7rem; padding:2px 7px;">👥 Compromiso Grupal</span>' : ''}
+        <span class="badge badge-status-${task.status}">ESTADO: ${task.status.replace(/_/g, ' ').toUpperCase()}</span>
+      `}
     `;
 
     // Metadata
-    const dueDateFormatted = new Date(task.dueDate).toLocaleString('es-ES', {
+    const dueDateFormatted = task.dueDate ? new Date(task.dueDate).toLocaleString('es-ES', {
       weekday: 'short', day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit'
-    });
-    document.getElementById('detailAssigneeName').innerHTML = assignees.length > 0
-      ? assignees.map(a => `<span class="badge badge-secondary" style="font-size:0.8rem; margin:2px;">👤 ${a.name} &lt;${a.email}&gt;</span>`).join('')
-      : 'Sin asignar';
+    }) : 'Sin definir';
+    document.getElementById('detailAssigneeName').innerHTML = isDraft
+      ? '<span style="color:var(--text-muted); font-style:italic;">Por asignar responsable</span>'
+      : (assignees.length > 0
+        ? assignees.map(a => `<span class="badge badge-secondary" style="font-size:0.8rem; margin:2px;">👤 ${a.name} &lt;${a.email}&gt;</span>`).join('')
+        : 'Sin asignar');
     document.getElementById('detailDueDate').textContent = dueDateFormatted;
-    document.getElementById('detailTimeRemaining').textContent = alert.formattedRemaining;
+    document.getElementById('detailTimeRemaining').textContent = isDraft ? 'En espera de asignación' : alert.formattedRemaining;
+
+    // Draft Banner
+    const draftBanner = document.getElementById('detailDraftBanner');
+    const isAdmin = currentUser && currentUser.role === 'admin';
+    if (draftBanner) {
+      if (isDraft) {
+        draftBanner.style.display = 'block';
+        draftBanner.innerHTML = `
+          <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:0.6rem;">
+            <div>
+              <strong style="color:#d97706; font-size:0.9rem;">📝 Compromiso Guardado en Borrador</strong>
+              <div style="font-size:0.8rem; color:var(--text-muted); margin-top:2px;">Esta actividad académica fue guardada sin despachar. El Decano o Gestor pueden asignarla cuando decidan a quién le compete.</div>
+            </div>
+            ${isAdmin ? `
+              <button class="btn btn-sm btn-primary" onclick="document.getElementById('taskDetailModal').classList.remove('active'); AdminModule.openAssignDraftModal('${task.id}')">
+                👤 Asignar Responsable(s) Ahora
+              </button>
+            ` : ''}
+          </div>
+        `;
+      } else {
+        draftBanner.style.display = 'none';
+      }
+    }
 
     // Issue status box in detail
     const issueBox = document.getElementById('detailIssueBox');
@@ -429,7 +463,7 @@ const App = {
           <div class="issue-box-subtext" style="margin-bottom: 0.5rem;">
             Reportado el: ${new Date(task.issueReport.reportedAt).toLocaleString()}
           </div>
-          ${currentUser && currentUser.role === 'admin' ? `
+          ${isAdmin ? `
             <button class="btn btn-sm btn-warning" onclick="AdminModule.openVerifyIssueModal('${task.id}')">
               🔍 Verificar y Resolver con el Docente
             </button>
@@ -442,8 +476,72 @@ const App = {
       issueBox.style.display = 'none';
     }
 
-    // Render Checklist
-    const checklistContainer = document.getElementById('detailChecklistContainer');
+    // Group Tasks Individual Breakdown
+    const breakdownContainer = document.getElementById('detailGroupProgressBreakdown');
+    if (breakdownContainer) {
+      if (isGroup) {
+        window.appStore.ensureAssigneeProgress(task);
+        const members = task.assigneeProgress || [];
+        breakdownContainer.style.display = 'block';
+        breakdownContainer.innerHTML = `
+          <div class="individual-progress-panel" style="background:var(--surface-2); border:1px solid var(--border); border-radius:var(--radius-md); padding:1rem;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.75rem; flex-wrap:wrap; gap:0.5rem;">
+              <div>
+                <h4 style="margin:0; font-size:0.95rem; color:var(--text-main); display:flex; align-items:center; gap:0.4rem;">
+                  <span>👥</span> Avance Individual por Docente (${members.length} miembros asignados)
+                </h4>
+                <span style="font-size:0.78rem; color:var(--text-muted);">Seguimiento independiente y transparente del cumplimiento individual de cada docente</span>
+              </div>
+              <span class="badge badge-info" style="font-size:0.8rem; font-weight:700;">Promedio Grupal: ${task.progress}%</span>
+            </div>
+
+            <div class="individual-members-grid" style="display:flex; flex-direction:column; gap:0.6rem;">
+              ${members.map(m => {
+                const mCompletedChk = (m.checklist || []).filter(c => c.completed).length;
+                const mTotalChk = (m.checklist || []).length;
+                const statusBadge = m.progress === 100
+                  ? '<span class="badge badge-success" style="font-size:0.7rem;">✅ Completado (100%)</span>'
+                  : (m.progress > 0
+                    ? '<span class="badge badge-info" style="font-size:0.7rem;">⚡ En Progreso</span>'
+                    : '<span class="badge" style="font-size:0.7rem;">⏳ Pendiente</span>');
+                const updatedStr = m.updatedAt ? new Date(m.updatedAt).toLocaleString('es-ES', { day:'2-digit', month:'short', hour:'2-digit', minute:'2-digit' }) : 'Sin registros';
+
+                return `
+                  <div class="member-progress-card" style="background:var(--surface-1); border:1px solid var(--border-subtle); border-radius:8px; padding:0.75rem; display:flex; flex-direction:column; gap:0.4rem;">
+                    <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:0.5rem;">
+                      <div style="display:flex; align-items:center; gap:0.5rem;">
+                        ${AdminModule.getAvatarHtml(m.avatar, m.userName ? m.userName.slice(0,2).toUpperCase() : '??', '28px', 'assignee-avatar')}
+                        <div>
+                          <strong style="font-size:0.875rem; color:var(--text-main);">${m.userName}</strong>
+                          <span style="font-size:0.75rem; color:var(--text-muted); margin-left:0.35rem;">&lt;${m.userEmail}&gt;</span>
+                        </div>
+                      </div>
+                      <div style="display:flex; align-items:center; gap:0.5rem;">
+                        ${statusBadge}
+                        <span style="font-family:var(--font-mono); font-weight:800; color:var(--primary); font-size:0.95rem;">${m.progress}%</span>
+                      </div>
+                    </div>
+
+                    <div class="progress-bar-bg" style="height:6px;">
+                      <div class="progress-bar-fill ${m.progress === 100 ? 'completado' : ''}" style="width:${m.progress}%;"></div>
+                    </div>
+
+                    <div style="display:flex; justify-content:space-between; align-items:center; font-size:0.75rem; color:var(--text-muted); flex-wrap:wrap; gap:0.35rem;">
+                      <span>Entregables propios completados: <strong>${mCompletedChk}/${mTotalChk}</strong></span>
+                      <span>${m.lastNote ? `Último reporte: <em>"${m.lastNote}"</em> • ` : ''}Actualizado: ${updatedStr}</span>
+                    </div>
+                  </div>
+                `;
+              }).join('')}
+            </div>
+          </div>
+        `;
+      } else {
+        breakdownContainer.style.display = 'none';
+      }
+    }
+
+    // Resolve user progress for Checklist and Controller
     const myIds = currentUser ? [currentUser.id, currentUser._id, currentUser.email].filter(Boolean).map(x => String(x).toLowerCase()) : [];
     const isEmployeeAssigned = currentUser && (
       task.assignedTo === 'all' ||
@@ -452,13 +550,18 @@ const App = {
         : myIds.includes(String(typeof task.assignedTo === 'object' ? (task.assignedTo?.id || task.assignedTo?.email || '') : task.assignedTo).toLowerCase())
       )
     );
-    const isAdmin = currentUser && currentUser.role === 'admin';
+
+    const userProgressObj = isGroup && !isAdmin ? window.appStore.getUserTaskProgress(task, currentUser) : null;
+    const activeChecklist = userProgressObj ? (userProgressObj.checklist || []) : (task.checklist || []);
+    const activeProgressVal = userProgressObj ? (userProgressObj.progress || 0) : (task.progress || 0);
     const canToggle = isEmployeeAssigned || isAdmin;
 
-    if (!task.checklist || task.checklist.length === 0) {
+    // Render Checklist
+    const checklistContainer = document.getElementById('detailChecklistContainer');
+    if (!activeChecklist || activeChecklist.length === 0) {
       checklistContainer.innerHTML = '<p style="font-size:0.85rem; color:var(--text-dim);">No se definieron entregables específicos.</p>';
     } else {
-      checklistContainer.innerHTML = task.checklist.map(item => `
+      checklistContainer.innerHTML = activeChecklist.map(item => `
         <label class="checklist-checkbox-item ${item.completed ? 'checked' : ''}">
           <input type="checkbox" 
             ${item.completed ? 'checked' : ''} 
@@ -471,32 +574,34 @@ const App = {
     }
 
     // Progress bar
-    document.getElementById('detailProgressBar').style.width = `${task.progress}%`;
-    document.getElementById('detailProgressText').textContent = `${task.progress}%`;
+    document.getElementById('detailProgressBar').style.width = `${activeProgressVal}%`;
+    document.getElementById('detailProgressText').textContent = isGroup && !isAdmin
+      ? `${activeProgressVal}% (Promedio del equipo: ${task.progress}%)`
+      : `${activeProgressVal}%`;
 
     // Render Interactive Percentage Controller
     const progressCtrl = document.getElementById('detailProgressController');
     if (progressCtrl) {
-      if (isEmployeeAssigned || isAdmin) {
+      if ((isEmployeeAssigned || isAdmin) && !isDraft) {
         progressCtrl.style.display = 'block';
         progressCtrl.innerHTML = `
           <div class="progress-updater-box">
             <div class="progress-updater-header">
-              <span class="progress-updater-title">📊 Actualizar Porcentaje de Avance</span>
-              <span class="progress-numeric-badge" id="modalProgressVal">${task.progress}%</span>
+              <span class="progress-updater-title">📊 ${isGroup && !isAdmin ? 'Actualizar Mi Porcentaje de Avance Individual' : 'Actualizar Porcentaje de Avance'}</span>
+              <span class="progress-numeric-badge" id="modalProgressVal">${activeProgressVal}%</span>
             </div>
             <div class="progress-slider-wrapper">
-              <input type="range" class="progress-range-slider" min="0" max="100" step="5" value="${task.progress}" 
+              <input type="range" class="progress-range-slider" min="0" max="100" step="5" value="${activeProgressVal}" 
                 id="modalProgressSlider"
                 oninput="document.getElementById('modalProgressVal').textContent = this.value + '%'"
               />
             </div>
             <div class="quick-percent-pills">
-              <button type="button" class="btn-percent-pill ${task.progress === 0 ? 'active' : ''}" onclick="document.getElementById('modalProgressSlider').value=0; document.getElementById('modalProgressVal').textContent='0%';">0%</button>
-              <button type="button" class="btn-percent-pill ${task.progress === 25 ? 'active' : ''}" onclick="document.getElementById('modalProgressSlider').value=25; document.getElementById('modalProgressVal').textContent='25%';">25%</button>
-              <button type="button" class="btn-percent-pill ${task.progress === 50 ? 'active' : ''}" onclick="document.getElementById('modalProgressSlider').value=50; document.getElementById('modalProgressVal').textContent='50%';">50%</button>
-              <button type="button" class="btn-percent-pill ${task.progress === 75 ? 'active' : ''}" onclick="document.getElementById('modalProgressSlider').value=75; document.getElementById('modalProgressVal').textContent='75%';">75%</button>
-              <button type="button" class="btn-percent-pill ${task.progress === 100 ? 'active' : ''}" onclick="document.getElementById('modalProgressSlider').value=100; document.getElementById('modalProgressVal').textContent='100%';">100%</button>
+              <button type="button" class="btn-percent-pill ${activeProgressVal === 0 ? 'active' : ''}" onclick="document.getElementById('modalProgressSlider').value=0; document.getElementById('modalProgressVal').textContent='0%';">0%</button>
+              <button type="button" class="btn-percent-pill ${activeProgressVal === 25 ? 'active' : ''}" onclick="document.getElementById('modalProgressSlider').value=25; document.getElementById('modalProgressVal').textContent='25%';">25%</button>
+              <button type="button" class="btn-percent-pill ${activeProgressVal === 50 ? 'active' : ''}" onclick="document.getElementById('modalProgressSlider').value=50; document.getElementById('modalProgressVal').textContent='50%';">50%</button>
+              <button type="button" class="btn-percent-pill ${activeProgressVal === 75 ? 'active' : ''}" onclick="document.getElementById('modalProgressSlider').value=75; document.getElementById('modalProgressVal').textContent='75%';">75%</button>
+              <button type="button" class="btn-percent-pill ${activeProgressVal === 100 ? 'active' : ''}" onclick="document.getElementById('modalProgressSlider').value=100; document.getElementById('modalProgressVal').textContent='100%';">100%</button>
             </div>
             <div style="display:flex; gap:0.5rem; margin-top:0.35rem;">
               <input type="text" id="modalProgressNote" class="form-control" placeholder="Detalle o justificación del avance (opcional)..." style="font-size:0.8rem;" />
@@ -519,44 +624,63 @@ const App = {
     actionsFooter.innerHTML = '';
 
     if (isAdmin) {
-      const btnReminder = document.createElement('button');
-      btnReminder.className = 'btn btn-secondary btn-sm';
-      btnReminder.innerHTML = '⏰ Recordatorio Decano';
-      btnReminder.onclick = () => {
-        AdminModule.openReminderModal(task.id);
-      };
-      actionsFooter.appendChild(btnReminder);
-
-      if (task.status !== 'completado') {
-        const btnApprove = document.createElement('button');
-        btnApprove.className = 'btn btn-primary btn-sm';
-        btnApprove.innerHTML = '✅ Validar y Marcar Aprobada';
-        btnApprove.onclick = () => {
-          window.appStore.updateTask(task.id, { status: 'completado', progress: 100 });
-          AlertsEngine.showToast('Compromiso Aprobado', 'La tarea académica ha sido validada como completada por la Decanatura.', 'success');
-          App.openTaskDetailModal(task.id);
-          AdminModule.render();
-        };
-        actionsFooter.appendChild(btnApprove);
-      } else {
-        const btnArchive = document.createElement('button');
-        btnArchive.className = 'btn btn-secondary btn-sm';
-        btnArchive.innerHTML = '📦 Archivar Compromiso';
-        btnArchive.onclick = async () => {
-          await window.appStore.archiveTask(task.id);
-          AlertsEngine.showToast('Tarea Archivada', 'El compromiso cumplido ha sido archivado.', 'info');
+      if (isDraft) {
+        const btnAssign = document.createElement('button');
+        btnAssign.className = 'btn btn-primary btn-sm';
+        btnAssign.innerHTML = '👤 Asignar Responsable(s)';
+        btnAssign.onclick = () => {
           document.getElementById('taskDetailModal').classList.remove('active');
-          AdminModule.render();
+          AdminModule.openAssignDraftModal(task.id);
         };
-        actionsFooter.appendChild(btnArchive);
+        actionsFooter.appendChild(btnAssign);
 
         const btnDelete = document.createElement('button');
         btnDelete.className = 'btn btn-danger btn-sm';
-        btnDelete.innerHTML = '🗑️ Eliminar Tarea (Liberar BD)';
+        btnDelete.innerHTML = '🗑️ Descartar Borrador';
         btnDelete.onclick = () => {
           AdminModule.confirmDeleteTask(task.id);
         };
         actionsFooter.appendChild(btnDelete);
+      } else {
+        const btnReminder = document.createElement('button');
+        btnReminder.className = 'btn btn-secondary btn-sm';
+        btnReminder.innerHTML = '⏰ Recordatorio Decano';
+        btnReminder.onclick = () => {
+          AdminModule.openReminderModal(task.id);
+        };
+        actionsFooter.appendChild(btnReminder);
+
+        if (task.status !== 'completado') {
+          const btnApprove = document.createElement('button');
+          btnApprove.className = 'btn btn-primary btn-sm';
+          btnApprove.innerHTML = '✅ Validar y Marcar Aprobada';
+          btnApprove.onclick = () => {
+            window.appStore.updateTask(task.id, { status: 'completado', progress: 100 });
+            AlertsEngine.showToast('Compromiso Aprobado', 'La tarea académica ha sido validada como completada por la Decanatura.', 'success');
+            App.openTaskDetailModal(task.id);
+            AdminModule.render();
+          };
+          actionsFooter.appendChild(btnApprove);
+        } else {
+          const btnArchive = document.createElement('button');
+          btnArchive.className = 'btn btn-secondary btn-sm';
+          btnArchive.innerHTML = '📦 Archivar Compromiso';
+          btnArchive.onclick = async () => {
+            await window.appStore.archiveTask(task.id);
+            AlertsEngine.showToast('Tarea Archivada', 'El compromiso cumplido ha sido archivado.', 'info');
+            document.getElementById('taskDetailModal').classList.remove('active');
+            AdminModule.render();
+          };
+          actionsFooter.appendChild(btnArchive);
+
+          const btnDelete = document.createElement('button');
+          btnDelete.className = 'btn btn-danger btn-sm';
+          btnDelete.innerHTML = '🗑️ Eliminar Tarea (Liberar BD)';
+          btnDelete.onclick = () => {
+            AdminModule.confirmDeleteTask(task.id);
+          };
+          actionsFooter.appendChild(btnDelete);
+        }
       }
     } else if (isEmployeeAssigned) {
       const btnReport = document.createElement('button');

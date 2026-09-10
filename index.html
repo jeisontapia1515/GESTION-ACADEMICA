@@ -253,6 +253,7 @@
             <!-- Filter by Status / Assignee -->
             <select id="adminFilterSelect" class="select-filter" title="Filtrar por estado o docente">
               <option value="all">Todos los Estados</option>
+              <option value="borrador">📝 Por Asignar (Borradores)</option>
               <option value="pendiente">Pendientes de inicio</option>
               <option value="en_progreso">En proceso</option>
               <option value="bloqueado">Con dificultades reportadas</option>
@@ -362,8 +363,19 @@
             <textarea id="taskDescInput" class="form-control" required placeholder="Detalla los requerimientos específicos, entregables académicos y criterios de aceptación..."></textarea>
           </div>
 
+          <!-- Draft mode option -->
+          <div class="form-group" style="background: rgba(14, 165, 233, 0.08); border: 1px dashed rgba(14, 165, 233, 0.35); border-radius: 8px; padding: 0.6rem 0.85rem; margin-bottom: 0.75rem;">
+            <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer; margin: 0; font-weight: 600; color: var(--text-main);">
+              <input type="checkbox" id="taskIsDraftCheckbox" onchange="AdminModule.toggleDraftMode(this.checked)" style="width: 17px; height: 17px;" />
+              <span>📝 Guardar como Borrador / Pendiente de Asignación (Decidir responsable más tarde)</span>
+            </label>
+            <span style="display: block; font-size: 0.76rem; color: var(--text-muted); margin-left: 1.6rem; margin-top: 2px;">
+              Permite formular la actividad y guardarla sin notificar a docentes hasta que la Decanatura esté segura de a quién le compete.
+            </span>
+          </div>
+
           <!-- Multi-Docente Assignees Selector -->
-          <div class="form-group">
+          <div class="form-group" id="assigneesFormGroup">
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.35rem; flex-wrap: wrap; gap: 0.5rem;">
               <label style="margin: 0; font-weight: 600;">Docentes Involucrados (Despacho Simultáneo de Notificaciones) *</label>
               <div style="display: flex; gap: 0.35rem;">
@@ -422,9 +434,87 @@
             </button>
           </div>
         </div>
+        <div class="modal-footer" style="display: flex; justify-content: space-between; gap: 0.5rem; flex-wrap: wrap;">
+          <button type="button" class="btn btn-secondary btn-modal-cancel">Cancelar</button>
+          <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
+            <button type="button" class="btn btn-outline-primary" id="btnSaveDraftTask" onclick="AdminModule.handleSaveDraftClick(event)">
+              💾 Guardar Borrador (Asignar Después)
+            </button>
+            <button type="submit" class="btn btn-primary" id="btnSubmitTask">
+              🚀 Delegar y Despachar Notificaciones Simultáneas
+            </button>
+          </div>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- 1.5 MODAL: ASIGNAR RESPONSABLE A BORRADOR DE TAREA (Decanatura) -->
+  <div id="assignDraftModal" class="modal-overlay">
+    <div class="modal-dialog">
+      <div class="modal-header">
+        <h3>👤 Asignar Responsable(s) a Compromiso</h3>
+        <button class="btn-close-modal">&times;</button>
+      </div>
+      <form id="assignDraftForm" onsubmit="AdminModule.handleConfirmDraftAssignment(event)">
+        <input type="hidden" id="assignDraftTaskId" />
+        <div class="modal-body">
+          <div style="background: var(--surface-2); border-radius: 8px; padding: 0.75rem 1rem; margin-bottom: 1rem; border: 1px solid var(--border);">
+            <div style="font-size: 0.75rem; text-transform: uppercase; color: var(--primary); font-weight: 700; letter-spacing: 0.5px;">Compromiso en Preparación</div>
+            <h4 id="assignDraftTaskTitle" style="margin: 0.25rem 0; color: var(--text-main); font-size: 1.05rem;"></h4>
+            <div id="assignDraftTaskDesc" style="font-size: 0.83rem; color: var(--text-muted); line-height: 1.4;"></div>
+          </div>
+
+          <div class="form-group">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.35rem; flex-wrap: wrap; gap: 0.5rem;">
+              <label style="margin: 0; font-weight: 600;">Docente(s) Responsable(s) Seleccionado(s) *</label>
+              <div style="display: flex; gap: 0.35rem;">
+                <button type="button" class="btn btn-xs btn-outline-primary" onclick="AdminModule.selectAllDraftAssignees(true)">☑️ Involucrar a Todos</button>
+                <button type="button" class="btn btn-xs btn-outline-secondary" onclick="AdminModule.selectAllDraftAssignees(false)">Deseleccionar</button>
+              </div>
+            </div>
+
+            <div id="assignDraftCheckboxContainer" style="max-height: 160px; overflow-y: auto; border: 1px solid var(--border); border-radius: 8px; padding: 0.5rem; background: var(--surface-2); display: flex; flex-direction: column; gap: 0.35rem;">
+              <!-- Populated dynamically -->
+            </div>
+
+            <div style="margin-top: 0.5rem;">
+              <label for="assignDraftCustomEmailsInput" style="font-size: 0.8rem; color: var(--text-muted); font-weight: 500; margin-bottom: 0.2rem; display: block;">
+                ➕ Añadir otros correos docentes adicionales (separados por coma):
+              </label>
+              <input type="text" id="assignDraftCustomEmailsInput" class="form-control" placeholder="docente@esfim.edu.co" oninput="AdminModule.updateDraftAssigneesSummary()" />
+            </div>
+
+            <div id="assignDraftSummaryBox" style="margin-top: 0.4rem; padding: 0.5rem 0.75rem; background: rgba(37, 99, 235, 0.08); border: 1px solid rgba(37, 99, 235, 0.25); border-radius: 6px; font-size: 0.8rem;">
+              <div style="color: #2563eb; font-weight: 600; display: flex; align-items: center; justify-content: space-between;">
+                <span>📧 Notificación se despachará a:</span>
+                <span id="assignDraftCountBadge" class="badge badge-info" style="font-size: 0.72rem;">0 seleccionados</span>
+              </div>
+              <div id="assignDraftListPreview" style="color: var(--text-main); font-size: 0.78rem; margin-top: 0.25rem; word-break: break-all;">
+                Ningún docente seleccionado.
+              </div>
+            </div>
+          </div>
+
+          <div class="form-row">
+            <div class="form-group" style="flex: 1;">
+              <label for="assignDraftPrioritySelect">Nivel de Prioridad</label>
+              <select id="assignDraftPrioritySelect" class="form-control">
+                <option value="urgente">🚨 Urgente</option>
+                <option value="alta" selected>🔥 Alta</option>
+                <option value="media">⚡ Media</option>
+                <option value="baja">📋 Baja</option>
+              </select>
+            </div>
+            <div class="form-group" style="flex: 1.5;">
+              <label for="assignDraftDueDateInput">Fecha y Hora Límite</label>
+              <input type="datetime-local" id="assignDraftDueDateInput" class="form-control" required />
+            </div>
+          </div>
+        </div>
         <div class="modal-footer">
           <button type="button" class="btn btn-secondary btn-modal-cancel">Cancelar</button>
-          <button type="submit" class="btn btn-primary">🚀 Delegar y Despachar Notificaciones Simultáneas</button>
+          <button type="submit" class="btn btn-primary">🚀 Confirmar Asignación y Notificar</button>
         </div>
       </form>
     </div>
@@ -580,6 +670,12 @@
             <strong id="detailTimeRemaining" style="color:#60a5fa; font-size:0.85rem;"></strong>
           </div>
         </div>
+
+        <!-- Draft Pending Assignment Banner -->
+        <div id="detailDraftBanner" style="display:none; margin: 1rem 0; padding: 0.85rem 1.1rem; background: rgba(245, 158, 11, 0.1); border: 1px solid rgba(245, 158, 11, 0.35); border-radius: var(--radius-md);"></div>
+
+        <!-- Individual Progress Breakdown for Multi-Docente / Group Tasks (Decanatura) -->
+        <div id="detailGroupProgressBreakdown" style="display:none; margin: 1.25rem 0;"></div>
 
         <!-- Checklist of Deliverables -->
         <div>

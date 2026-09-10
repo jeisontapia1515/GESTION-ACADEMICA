@@ -27,6 +27,9 @@ router.get("/", protect, async (req, res) => {
     }
 
     if (req.user.role === "employee") {
+      filter.isDraft = { $ne: true };
+      filter.status = { $nin: ["archivado", "borrador"] };
+
       const uid = req.user._id.toString();
       const uEmail = req.user.email ? req.user.email.toLowerCase() : "";
       const matches = [uid, req.user._id];

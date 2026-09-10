@@ -24,19 +24,34 @@ const commentSchema = new mongoose.Schema({
   type: { type: String, default: "general" }
 }, { _id: false });
 
+const assigneeProgressSchema = new mongoose.Schema({
+  userId: String,
+  userName: String,
+  userEmail: String,
+  avatar: String,
+  progress: { type: Number, default: 0, min: 0, max: 100 },
+  status: { type: String, enum: ["pendiente", "en_progreso", "completado"], default: "pendiente" },
+  checklist: [checklistItemSchema],
+  lastNote: { type: String, default: "" },
+  updatedAt: { type: Date, default: Date.now },
+  completedAt: { type: Date }
+}, { _id: false });
+
 const taskSchema = new mongoose.Schema({
   title: { type: String, required: true, trim: true },
   description: { type: String, default: "" },
   assignedTo: { type: mongoose.Schema.Types.Mixed },
   area: { type: String, enum: ["formativa", "aplicada", "editorial", "doctrina", "decanatura"], required: true },
   priority: { type: String, enum: ["urgent", "high", "normal", "low"], default: "normal" },
-  status: { type: String, enum: ["pendiente", "en_progreso", "completado", "bloqueado", "revision_pendiente", "archivado"], default: "pendiente" },
+  status: { type: String, enum: ["pendiente", "en_progreso", "completado", "bloqueado", "revision_pendiente", "archivado", "borrador"], default: "pendiente" },
+  isDraft: { type: Boolean, default: false },
   isArchived: { type: Boolean, default: false },
   completedAt: { type: Date },
   progress: { type: Number, default: 0, min: 0, max: 100 },
   dueDate: { type: Date },
   startDate: { type: Date, default: Date.now },
   checklist: [checklistItemSchema],
+  assigneeProgress: [assigneeProgressSchema],
   issueReport: issueReportSchema,
   comments: [commentSchema],
   createdBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" },

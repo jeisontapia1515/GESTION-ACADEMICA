@@ -283,6 +283,12 @@
   box-shadow: 0 0 15px rgba(217, 70, 239, 0.15);
 }
 
+.task-card.alert-border-draft {
+  border: 1px dashed rgba(245, 158, 11, 0.6);
+  background: rgba(245, 158, 11, 0.02);
+  box-shadow: 0 0 15px rgba(245, 158, 11, 0.08);
+}
+
 /* Task Card Header */
 .task-card-header {
   display: flex;
@@ -427,6 +433,12 @@
   background: rgba(16, 185, 129, 0.15);
   color: #6ee7b7;
   border: 1px solid rgba(16, 185, 129, 0.3);
+}
+
+.badge-status-borrador {
+  background: rgba(245, 158, 11, 0.15);
+  color: #fbbf24;
+  border: 1px dashed rgba(245, 158, 11, 0.5);
 }
 
 /* Alert Indicator Badge (Time/Status) */
@@ -1466,6 +1478,172 @@ textarea.form-control {
     transform: scale(0.95);
     box-shadow: 0 0 0 0 rgba(16, 185, 129, 0);
   }
+}
+
+/* ==========================================================================
+   DRAFT TASKS & INDIVIDUAL GROUP PROGRESS STYLES
+   ========================================================================== */
+
+/* Draft Alert Banner (Detail Modal) */
+.alert-draft-banner {
+  background: linear-gradient(135deg, rgba(245, 158, 11, 0.12), rgba(217, 119, 6, 0.06));
+  border: 1px dashed rgba(245, 158, 11, 0.45);
+  border-radius: var(--radius-md);
+  padding: 0.85rem 1.15rem;
+}
+
+/* Group Progress Micro-Pills (Admin Task Cards & Table) */
+.group-progress-micro-pills {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  flex-wrap: wrap;
+  margin-top: 0.5rem;
+  padding: 0.35rem 0.5rem;
+  background: rgba(15, 23, 42, 0.35);
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-subtle);
+}
+
+.member-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.2rem 0.45rem;
+  border-radius: 9999px;
+  background: rgba(148, 163, 184, 0.1);
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  font-size: 0.68rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  transition: all var(--transition-fast);
+}
+
+.member-pill.active {
+  background: rgba(6, 182, 212, 0.15);
+  border-color: rgba(6, 182, 212, 0.4);
+  color: #67e8f9;
+}
+
+.member-pill.done {
+  background: rgba(16, 185, 129, 0.15);
+  border-color: rgba(16, 185, 129, 0.4);
+  color: #6ee7b7;
+}
+
+.member-pill-avatar {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.15);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.6rem;
+  font-weight: 800;
+}
+
+.table-micro-pills {
+  display: flex;
+  gap: 0.25rem;
+  flex-wrap: wrap;
+}
+
+.table-pill {
+  font-size: 0.62rem;
+  padding: 0.15rem 0.35rem;
+  border-radius: 4px;
+  background: rgba(148, 163, 184, 0.12);
+  border: 1px solid var(--border-subtle);
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+/* Individual Progress Panel (Task Detail Modal) */
+.individual-progress-panel {
+  background: rgba(15, 23, 42, 0.35);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  padding: 1.15rem;
+  margin-bottom: 1.5rem;
+}
+
+.member-progress-card {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  padding: 0.85rem 1rem;
+  transition: transform var(--transition-fast), border-color var(--transition-fast);
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+}
+
+.member-progress-card:hover {
+  border-color: var(--border-focus);
+}
+
+.member-progress-card.member-card-done {
+  border-color: rgba(16, 185, 129, 0.4);
+  background: linear-gradient(135deg, rgba(16, 185, 129, 0.04), var(--bg-surface));
+}
+
+.member-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.member-progress-bar-wrap {
+  width: 100%;
+  height: 7px;
+  background: rgba(148, 163, 184, 0.15);
+  border-radius: 9999px;
+  overflow: hidden;
+  position: relative;
+}
+
+.member-progress-bar-fill {
+  height: 100%;
+  border-radius: 9999px;
+  transition: width 0.4s ease;
+  background: linear-gradient(90deg, #06b6d4, #3b82f6);
+}
+
+.member-card-done .member-progress-bar-fill {
+  background: linear-gradient(90deg, #10b981, #059669);
+}
+
+.member-card-details {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 0.72rem;
+  color: var(--text-dim);
+}
+
+/* Draft Assignees Item in Assign Modal */
+.draft-assignee-item {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.6rem 0.85rem;
+  border-radius: var(--radius-md);
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  cursor: pointer;
+  transition: background var(--transition-fast), border-color var(--transition-fast);
+}
+
+.draft-assignee-item:hover {
+  background: rgba(99, 102, 241, 0.08);
+  border-color: rgba(99, 102, 241, 0.3);
+}
+
+.draft-assignee-item input[type="checkbox"]:checked ~ .draft-assignee-info .name {
+  color: var(--primary-light);
+  font-weight: 700;
 }
 
 

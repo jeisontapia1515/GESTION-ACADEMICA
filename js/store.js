@@ -400,15 +400,24 @@ class AppStore {
   async createTask(taskData) {
     const tasks = this.getTasks();
     const tempId = 'task-' + Date.now();
+    const isDraft = Boolean(taskData.isDraft || taskData.status === 'borrador');
     let newTask = {
       id: tempId,
       createdAt: new Date().toISOString(),
       progress: 0,
-      status: 'pendiente',
+      status: isDraft ? 'borrador' : 'pendiente',
+      isDraft: isDraft,
       issueReport: null,
       comments: [],
+      checklist: taskData.checklist || [],
+      assigneeProgress: [],
       ...taskData
     };
+
+    if (!isDraft) {
+      this.ensureAssigneeProgress(newTask);
+    }
+
     tasks.unshift(newTask);
     this.saveTasks(tasks);
 
@@ -422,7 +431,7 @@ class AppStore {
             'Content-Type': 'application/json',
             'Authorization': `Bearer ${token}`
           },
-          body: JSON.stringify(taskData)
+          body: JSON.stringify(newTask)
         });
         const data = await res.json();
         if (data.success && data.task) {
@@ -443,10 +452,22 @@ class AppStore {
       }
     }
 
+    if (isDraft) {
+      this.addNotification({
+        targetUserId: 'admin',
+        targetRole: 'admin',
+        title: '📝 Borrador Guardado',
+        message: `La tarea "${newTask.title}" se guardó en borrador. Queda lista para asignar cuando se determine a quién le compete.`,
+        type: 'info',
+        taskId: newTask.id
+      });
+      return newTask;
+    }
+
     // Notificaciones para los docentes asignados y para la Decanatura (Gestor/Decano)
     const targetUserIds = Array.isArray(newTask.assignedTo) ? newTask.assignedTo : [newTask.assignedTo].filter(Boolean);
     const areaName = window.DECANATURA_AREAS && newTask.area ? window.DECANATURA_AREAS[newTask.area]?.name : 'Investigación';
-    const dueDateStr = new Date(newTask.dueDate).toLocaleString('es-CO');
+    const dueDateStr = newTask.dueDate ? new Date(newTask.dueDate).toLocaleString('es-CO') : 'Sin definir';
 
     targetUserIds.forEach(uId => {
       this.addNotification({
@@ -478,46 +499,264 @@ class AppStore {
     return newTask;
   }
 
-  updateTask(id, updates) {
-    const tasks = this.getTasks();
-    const sId = String(id);
-    const index = tasks.findIndex(t => String(t.id) === sId || String(t._id) === sId);
-    if (index !== -1) {
-      tasks[index] = { ...tasks[index], ...updates };
-      this.saveTasks(tasks);
-
-      // Persist to MongoDB backend if authenticated
-      const token = this.getToken();
-      const realId = tasks[index]._id || tasks[index].id;
-      if (token && realId && !String(realId).startsWith('task-')) {
-        fetch(`/api/tasks/${realId}`, {
-          method: 'PUT',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${token}`
-          },
-          body: JSON.stringify(updates)
-        }).catch(e => console.warn('Error actualizando tarea en servidor:', e));
-      }
-
-      return tasks[index];
+  // Ensure individual progress tracking records exist for all assignees in a task
+  ensureAssigneeProgress(task) {
+    if (!task) return [];
+    if (!Array.isArray(task.assigneeProgress)) {
+      task.assigneeProgress = [];
     }
-    return null;
+
+    let targetDocentes = [];
+    if (task.assignedTo === 'all') {
+      targetDocentes = this.getEmployees();
+    } else if (Array.isArray(task.assignedTo)) {
+      targetDocentes = task.assignedTo.map(item => {
+        if (typeof item === 'object' && item && item.email) return item;
+        const raw = typeof item === 'object' && item ? (item.id || item._id || item.email) : item;
+        return this.getUserById(raw) || { id: raw, name: String(raw).split('@')[0], email: raw };
+      }).filter(Boolean);
+    } else if (task.assignedTo) {
+      const single = typeof task.assignedTo === 'object' ? task.assignedTo : (this.getUserById(task.assignedTo) || { id: task.assignedTo, name: 'Docente', email: task.assignedTo });
+      targetDocentes = [single];
+    }
+
+    const templateChecklist = Array.isArray(task.checklist) ? task.checklist.map(c => ({
+      id: c.id,
+      text: c.text,
+      completed: false
+    })) : [];
+
+    targetDocentes.forEach(doc => {
+      const dId = String(doc.id || doc._id || doc.email || '').toLowerCase();
+      const dEmail = String(doc.email || '').toLowerCase();
+      let entry = task.assigneeProgress.find(ap => {
+        const apId = String(ap.userId || '').toLowerCase();
+        const apEmail = String(ap.userEmail || '').toLowerCase();
+        return (dId && apId === dId) || (dEmail && apEmail === dEmail);
+      });
+
+      if (!entry) {
+        task.assigneeProgress.push({
+          userId: doc.id || doc._id || doc.email,
+          userName: doc.name || 'Docente Investigador',
+          userEmail: doc.email || '',
+          avatar: doc.avatar || (doc.name ? doc.name.slice(0, 2).toUpperCase() : 'DC'),
+          progress: 0,
+          status: 'pendiente',
+          checklist: templateChecklist.map(item => ({ ...item })),
+          lastNote: '',
+          updatedAt: new Date().toISOString()
+        });
+      } else {
+        if (!Array.isArray(entry.checklist)) {
+          entry.checklist = templateChecklist.map(item => ({ ...item }));
+        } else {
+          templateChecklist.forEach(chk => {
+            if (!entry.checklist.some(ec => ec.id === chk.id)) {
+              entry.checklist.push({ ...chk });
+            }
+          });
+        }
+      }
+    });
+
+    return task.assigneeProgress;
   }
 
-  deleteTask(id) {
-    const sId = String(id);
-    const target = this.getTasks().find(t => String(t.id) === sId || String(t._id) === sId);
-    const tasks = this.getTasks().filter(t => String(t.id) !== sId && String(t._id) !== sId);
-    this.saveTasks(tasks);
+  // Get user's individual progress inside a task
+  getUserTaskProgress(task, user) {
+    if (!task) return { progress: 0, status: 'pendiente', checklist: [], lastNote: '' };
+    if (!user) return { progress: task.progress || 0, status: task.status || 'pendiente', checklist: task.checklist || [], lastNote: '' };
 
-    const token = this.getToken();
-    const realId = target ? (target._id || target.id) : id;
-    if (token && realId && !String(realId).startsWith('task-')) {
-      fetch(`/api/tasks/${realId}`, {
-        method: 'DELETE',
-        headers: { 'Authorization': `Bearer ${token}` }
-      }).catch(e => console.warn('Error eliminando tarea en servidor:', e));
+    this.ensureAssigneeProgress(task);
+
+    const uIds = [user.id, user._id, user.email].filter(Boolean).map(x => String(x).toLowerCase());
+    const entry = (task.assigneeProgress || []).find(ap => {
+      const apId = String(ap.userId || '').toLowerCase();
+      const apEmail = String(ap.userEmail || '').toLowerCase();
+      return uIds.includes(apId) || (apEmail && uIds.includes(apEmail));
+    });
+
+    if (entry) {
+      return entry;
+    }
+
+    return {
+      progress: task.progress || 0,
+      status: task.status || 'pendiente',
+      checklist: task.checklist || [],
+      lastNote: ''
+    };
+  }
+
+  // Assign or delegate a draft task to selected docentes
+  async assignDraftTask(taskId, targetDocentes, extraOptions = {}) {
+    const task = this.getTaskById(taskId);
+    if (!task) return null;
+
+    const assignedIds = targetDocentes.map(d => d.id || d._id || d.email);
+    if (assignedIds.length === 0) return null;
+
+    const updates = {
+      assignedTo: assignedIds.length === 1 ? assignedIds[0] : assignedIds,
+      isDraft: false,
+      status: 'pendiente',
+      updatedAt: new Date().toISOString()
+    };
+
+    if (extraOptions.dueDate) {
+      updates.dueDate = new Date(extraOptions.dueDate).toISOString();
+    }
+    if (extraOptions.priority) {
+      updates.priority = extraOptions.priority;
+    }
+    if (extraOptions.area) {
+      updates.area = extraOptions.area;
+    }
+
+    task.assignedTo = updates.assignedTo;
+    this.ensureAssigneeProgress(task);
+    updates.assigneeProgress = task.assigneeProgress;
+
+    const updated = this.updateTask(taskId, updates);
+
+    // Dispatch notifications
+    const areaName = window.DECANATURA_AREAS && updated.area ? window.DECANATURA_AREAS[updated.area]?.name : 'Investigación';
+    const dueDateStr = updated.dueDate ? new Date(updated.dueDate).toLocaleString('es-CO') : 'Sin definir';
+
+    assignedIds.forEach(uId => {
+      this.addNotification({
+        targetUserId: uId,
+        targetRole: 'employee',
+        title: '📋 Nuevo Compromiso Asignado',
+        message: `La Decanatura le ha asignado la tarea "${updated.title}" (${areaName}) con fecha límite ${dueDateStr}.`,
+        type: 'info',
+        taskId: updated.id
+      });
+    });
+
+    const isPlenary = updated.area === 'decanatura' || assignedIds.length > 2;
+    const namesList = targetDocentes.map(d => d.name || d.email).join(', ');
+
+    this.addNotification({
+      targetUserId: 'admin',
+      targetRole: 'admin',
+      title: isPlenary ? '🏛️ Tarea Plenaria Delegada' : '📋 Tarea Delegada',
+      message: `El borrador "${updated.title}" ha sido asignado a: ${namesList}. Plazo: ${dueDateStr}.`,
+      type: isPlenary ? 'warning' : 'info',
+      taskId: updated.id
+    });
+
+    return updated;
+  }
+
+  // Toggle checklist item for user (maintaining individual checklist in group tasks)
+  toggleUserChecklistItem(taskId, checkId, completed, targetUser = null) {
+    const task = this.getTaskById(taskId);
+    if (!task) return null;
+
+    const user = targetUser || this.getCurrentUser();
+    this.ensureAssigneeProgress(task);
+
+    const isGroup = task.area === 'decanatura' || task.assignedTo === 'all' || (Array.isArray(task.assignedTo) && task.assignedTo.length > 1) || (task.assigneeProgress && task.assigneeProgress.length > 1);
+
+    const uIds = user ? [user.id, user._id, user.email].filter(Boolean).map(x => String(x).toLowerCase()) : [];
+    const entry = (task.assigneeProgress || []).find(ap => {
+      const apId = String(ap.userId || '').toLowerCase();
+      const apEmail = String(ap.userEmail || '').toLowerCase();
+      return uIds.includes(apId) || (apEmail && uIds.includes(apEmail));
+    });
+
+    let individualProgress = 0;
+    let completedItemText = '';
+
+    if (entry && isGroup) {
+      entry.checklist = entry.checklist || [];
+      const item = entry.checklist.find(c => c.id === checkId);
+      if (item) {
+        item.completed = completed;
+        completedItemText = item.text;
+      }
+      const completedCount = entry.checklist.filter(c => c.completed).length;
+      individualProgress = entry.checklist.length > 0 ? Math.round((completedCount / entry.checklist.length) * 100) : 0;
+      entry.progress = individualProgress;
+      entry.status = individualProgress === 100 ? 'completado' : (individualProgress > 0 ? 'en_progreso' : 'pendiente');
+      entry.updatedAt = new Date().toISOString();
+      if (individualProgress === 100) entry.completedAt = new Date().toISOString();
+
+      // Recalculate team average
+      const sum = task.assigneeProgress.reduce((acc, curr) => acc + (curr.progress || 0), 0);
+      const avg = Math.round(sum / task.assigneeProgress.length);
+      const allCompleted = task.assigneeProgress.every(a => a.progress === 100);
+
+      const updates = {
+        assigneeProgress: task.assigneeProgress,
+        progress: avg,
+        status: allCompleted ? 'completado' : (avg > 0 ? 'en_progreso' : 'pendiente')
+      };
+
+      if (allCompleted) updates.completedAt = new Date().toISOString();
+
+      this.updateTask(taskId, updates);
+
+      const userName = user ? user.name : 'Un docente';
+      if (completed) {
+        this.addNotification({
+          targetUserId: 'admin',
+          targetRole: 'admin',
+          title: individualProgress === 100 ? '✅ Entregables Completados por Docente' : '☑️ Entregable Individual Cumplido',
+          message: `${userName} completó "${completedItemText}" en "${task.title}" (Avance propio: ${individualProgress}%, Promedio grupal: ${avg}%).`,
+          type: individualProgress === 100 ? 'success' : 'info',
+          taskId: task.id
+        });
+      }
+
+      return { task, userProgress: individualProgress, teamProgress: avg };
+    } else {
+      // Single-user or global checklist fallback
+      task.checklist = task.checklist || [];
+      const item = task.checklist.find(c => c.id === checkId);
+      if (item) {
+        item.completed = completed;
+        completedItemText = item.text;
+      }
+      const completedCount = task.checklist.filter(c => c.completed).length;
+      const progress = task.checklist.length > 0 ? Math.round((completedCount / task.checklist.length) * 100) : 0;
+
+      const updates = {
+        checklist: task.checklist,
+        progress: progress
+      };
+      if (progress === 100) {
+        updates.status = 'completado';
+        updates.completedAt = new Date().toISOString();
+      } else if (progress > 0 && task.status === 'pendiente') {
+        updates.status = 'en_progreso';
+      }
+
+      if (entry) {
+        entry.checklist = task.checklist;
+        entry.progress = progress;
+        entry.status = updates.status || entry.status;
+        entry.updatedAt = new Date().toISOString();
+        updates.assigneeProgress = task.assigneeProgress;
+      }
+
+      this.updateTask(taskId, updates);
+
+      const userName = user ? user.name : 'Un docente';
+      if (completed) {
+        this.addNotification({
+          targetUserId: 'admin',
+          targetRole: 'admin',
+          title: progress === 100 ? '✅ Tarea Completada al 100%' : '☑️ Entregable Cumplido',
+          message: `${userName} completó el entregable "${completedItemText}" en "${task.title}" (Progreso: ${progress}%).`,
+          type: progress === 100 ? 'success' : 'info',
+          taskId: task.id
+        });
+      }
+
+      return { task, userProgress: progress, teamProgress: progress };
     }
   }
 
@@ -526,57 +765,141 @@ class AppStore {
     const task = this.getTaskById(taskId);
     if (!task) return null;
 
+    const currentUser = this.getCurrentUser();
     const prevProgress = task.progress || 0;
     const newProgress = Math.min(100, Math.max(0, parseInt(progressPercentage, 10)));
-    const updates = { progress: newProgress };
-
-    if (newProgress === 100) {
-      updates.status = 'completado';
-    } else if (newProgress > 0 && task.status === 'pendiente') {
-      updates.status = 'en_progreso';
-    }
-
-    const currentUser = this.getCurrentUser();
-    const commentText = progressNote 
-      ? `[ACTUALIZACIÓN DE AVANCE: ${newProgress}%]: ${progressNote}`
-      : `[AVANCE REGISTRADO]: Progreso actualizado del ${prevProgress}% al ${newProgress}%.`;
-
-    task.comments = task.comments || [];
-    task.comments.push({
-      id: 'c-' + Date.now(),
-      authorId: currentUser ? currentUser.id : 'unknown',
-      authorName: currentUser ? currentUser.name : 'Empleado',
-      text: commentText,
-      timestamp: new Date().toISOString(),
-      type: 'general'
-    });
-    updates.comments = task.comments;
-
-    const updated = this.updateTask(taskId, updates);
-
-    // Notificar a Decanatura ante cada actualización de avance realizada
     const userName = currentUser ? currentUser.name : 'Un docente';
-    if (newProgress === 100) {
-      this.addNotification({
-        targetUserId: 'admin',
-        targetRole: 'admin',
-        title: '✅ Compromiso Cumplido al 100%',
-        message: `${userName} ha reportado el cumplimiento del 100% en: "${task.title}".`,
-        type: 'success',
-        taskId: task.id
-      });
-    } else if (newProgress !== prevProgress || progressNote) {
-      this.addNotification({
-        targetUserId: 'admin',
-        targetRole: 'admin',
-        title: `📈 Avance Registrado: ${newProgress}%`,
-        message: `${userName} registró un avance del ${newProgress}% en "${task.title}"${progressNote ? `: "${progressNote}"` : '.'}`,
-        type: 'info',
-        taskId: task.id
-      });
-    }
 
-    return updated;
+    this.ensureAssigneeProgress(task);
+
+    const isGroup = task.area === 'decanatura' || task.assignedTo === 'all' || (Array.isArray(task.assignedTo) && task.assignedTo.length > 1) || (task.assigneeProgress && task.assigneeProgress.length > 1);
+
+    const uIds = currentUser ? [currentUser.id, currentUser._id, currentUser.email].filter(Boolean).map(x => String(x).toLowerCase()) : [];
+    const entry = (task.assigneeProgress || []).find(ap => {
+      const apId = String(ap.userId || '').toLowerCase();
+      const apEmail = String(ap.userEmail || '').toLowerCase();
+      return uIds.includes(apId) || (apEmail && uIds.includes(apEmail));
+    });
+
+    const updates = {};
+
+    if (entry && isGroup && currentUser && currentUser.role !== 'admin') {
+      // Individual employee updating their own progress in a group task
+      const prevUserProgress = entry.progress || 0;
+      entry.progress = newProgress;
+      entry.lastNote = progressNote || '';
+      entry.updatedAt = new Date().toISOString();
+      entry.status = newProgress === 100 ? 'completado' : (newProgress > 0 ? 'en_progreso' : 'pendiente');
+      if (newProgress === 100) entry.completedAt = new Date().toISOString();
+
+      // Recalculate team average
+      const sum = task.assigneeProgress.reduce((acc, curr) => acc + (curr.progress || 0), 0);
+      const avg = Math.round(sum / task.assigneeProgress.length);
+      const allDone = task.assigneeProgress.every(a => a.progress === 100);
+
+      updates.progress = avg;
+      updates.assigneeProgress = task.assigneeProgress;
+      updates.status = allDone ? 'completado' : (avg > 0 ? 'en_progreso' : 'pendiente');
+      if (allDone) updates.completedAt = new Date().toISOString();
+
+      const commentText = progressNote
+        ? `[AVANCE INDIVIDUAL - ${userName}: ${newProgress}%]: ${progressNote}`
+        : `[AVANCE INDIVIDUAL - ${userName}]: Progreso personal actualizado del ${prevUserProgress}% al ${newProgress}%.`;
+
+      task.comments = task.comments || [];
+      task.comments.push({
+        id: 'c-' + Date.now(),
+        authorId: currentUser.id || currentUser._id,
+        authorName: userName,
+        text: commentText,
+        timestamp: new Date().toISOString(),
+        type: 'general'
+      });
+      updates.comments = task.comments;
+
+      const updated = this.updateTask(taskId, updates);
+
+      // Notify Decanatura of this specific docente's individual advance
+      if (newProgress === 100) {
+        this.addNotification({
+          targetUserId: 'admin',
+          targetRole: 'admin',
+          title: '✅ Docente Completó su Compromiso al 100%',
+          message: `${userName} cumplió el 100% en la tarea grupal "${task.title}". Promedio grupal general: ${avg}%.`,
+          type: 'success',
+          taskId: task.id
+        });
+      } else if (newProgress !== prevUserProgress || progressNote) {
+        this.addNotification({
+          targetUserId: 'admin',
+          targetRole: 'admin',
+          title: `📈 Avance Individual de ${userName}: ${newProgress}%`,
+          message: `${userName} reportó ${newProgress}% de avance en "${task.title}". (Promedio global del equipo: ${avg}%)${progressNote ? `: "${progressNote}"` : '.'}`,
+          type: 'info',
+          taskId: task.id
+        });
+      }
+
+      return updated;
+    } else {
+      // Single task or admin setting progress
+      updates.progress = newProgress;
+      if (newProgress === 100) {
+        updates.status = 'completado';
+        updates.completedAt = new Date().toISOString();
+      } else if (newProgress > 0 && task.status === 'pendiente') {
+        updates.status = 'en_progreso';
+      }
+
+      if (entry) {
+        entry.progress = newProgress;
+        entry.lastNote = progressNote || '';
+        entry.updatedAt = new Date().toISOString();
+        entry.status = updates.status || entry.status;
+        if (newProgress === 100) entry.completedAt = new Date().toISOString();
+        updates.assigneeProgress = task.assigneeProgress;
+      }
+
+      const commentText = progressNote 
+        ? `[ACTUALIZACIÓN DE AVANCE: ${newProgress}%]: ${progressNote}`
+        : `[AVANCE REGISTRADO]: Progreso actualizado del ${prevProgress}% al ${newProgress}%.`;
+
+      task.comments = task.comments || [];
+      task.comments.push({
+        id: 'c-' + Date.now(),
+        authorId: currentUser ? currentUser.id : 'unknown',
+        authorName: userName,
+        text: commentText,
+        timestamp: new Date().toISOString(),
+        type: 'general'
+      });
+      updates.comments = task.comments;
+
+      const updated = this.updateTask(taskId, updates);
+
+      // Notificar a Decanatura ante cada actualización de avance realizada
+      if (newProgress === 100) {
+        this.addNotification({
+          targetUserId: 'admin',
+          targetRole: 'admin',
+          title: '✅ Compromiso Cumplido al 100%',
+          message: `${userName} ha reportado el cumplimiento del 100% en: "${task.title}".`,
+          type: 'success',
+          taskId: task.id
+        });
+      } else if (newProgress !== prevProgress || progressNote) {
+        this.addNotification({
+          targetUserId: 'admin',
+          targetRole: 'admin',
+          title: `📈 Avance Registrado: ${newProgress}%`,
+          message: `${userName} registró un avance del ${newProgress}% en "${task.title}"${progressNote ? `: "${progressNote}"` : '.'}`,
+          type: 'info',
+          taskId: task.id
+        });
+      }
+
+      return updated;
+    }
   }
 
   // Add Comment or Reminder

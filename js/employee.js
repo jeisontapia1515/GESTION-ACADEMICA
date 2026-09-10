@@ -8,6 +8,7 @@ const EmployeeModule = {
 
   isTaskAssignedToUser(task, user) {
     if (!task || !user) return false;
+    if (task.isDraft || task.status === 'borrador') return false;
     if (task.assignedTo === 'all') return true;
     const userIdentifiers = [user.id, user._id, user.email]
       .filter(Boolean)
@@ -167,6 +168,12 @@ const EmployeeModule = {
     }[String(task.priority || '').toLowerCase()] || 'Media';
 
     const hasReminders = (task.comments || []).some(c => c.type === 'reminder');
+    const isGroup = task.area === 'decanatura' || task.assignedTo === 'all' || (Array.isArray(task.assignedTo) && task.assignedTo.length > 1) || (task.assigneeProgress && task.assigneeProgress.length > 1);
+    const userProgressObj = window.appStore.getUserTaskProgress(task, currentUser);
+    const activeProgress = isGroup ? (userProgressObj.progress || 0) : (task.progress || 0);
+    const userChecklist = isGroup ? (userProgressObj.checklist || []) : (task.checklist || []);
+    const completedChecklistCount = userChecklist.filter(c => c.completed).length;
+    const totalChecklistCount = userChecklist.length;
 
     return `
       <div class="task-card ${cardBorderClass}">
@@ -179,6 +186,7 @@ const EmployeeModule = {
             ` : ''}
             <span class="badge badge-priority-${task.priority}">${priorityLabel}</span>
             <span class="badge ${alert.badgeClass}">${alert.label}</span>
+            ${isGroup ? '<span class="badge badge-info" style="font-size:0.72rem; padding:2px 7px;" title="Actividad colectiva. Tu reporte de avance es individual y no modifica el de tus compañeros.">👥 Grupal · Mi reporte</span>' : ''}
             ${hasReminders ? '<span class="badge badge-alert due-soon" title="Tiene directrices o recordatorios del Decano">⏰ Recordatorio del Decano</span>' : ''}
           </div>
           <button class="btn-icon" onclick="App.openTaskDetailModal('${task.id}')" title="Ver entregables y comentarios">
@@ -206,39 +214,46 @@ const EmployeeModule = {
         <!-- Progress bar and Interactive Controller -->
         <div class="card-quick-progress">
           <div class="progress-header">
-            <span>Porcentaje de Avance</span>
-            <span id="percentLabel-${task.id}" style="font-family:var(--font-mono); font-weight:800; color:var(--primary); font-size:1.05rem;">${task.progress}%</span>
+            <span>${isGroup ? 'Mi Porcentaje de Avance Individual' : 'Porcentaje de Avance'}</span>
+            <span id="percentLabel-${task.id}" style="font-family:var(--font-mono); font-weight:800; color:var(--primary); font-size:1.05rem;">${activeProgress}%</span>
           </div>
 
           <div class="progress-bar-bg">
-            <div id="barFill-${task.id}" class="progress-bar-fill ${task.progress === 100 ? 'completado' : ''}" style="width: ${task.progress}%;"></div>
+            <div id="barFill-${task.id}" class="progress-bar-fill ${activeProgress === 100 ? 'completado' : ''}" style="width: ${activeProgress}%;"></div>
           </div>
+
+          ${isGroup ? `
+            <div style="font-size:0.74rem; color:var(--text-muted); margin-top:2px; display:flex; justify-content:space-between;">
+              <span>Avance individual</span>
+              <span>Promedio general del equipo: <strong>${task.progress}%</strong></span>
+            </div>
+          ` : ''}
 
           <!-- Interactive Slider & Quick Pills -->
           <div style="display:flex; align-items:center; gap:0.5rem; margin-top:0.25rem;">
-            <input type="range" class="progress-range-slider" min="0" max="100" step="5" value="${task.progress}" 
+            <input type="range" class="progress-range-slider" min="0" max="100" step="5" value="${activeProgress}" 
               id="slider-${task.id}"
               oninput="EmployeeModule.handleSliderInput('${task.id}', this.value)"
             />
           </div>
 
           <div class="quick-percent-pills">
-            <button type="button" class="btn-percent-pill ${task.progress === 0 ? 'active' : ''}" onclick="EmployeeModule.applyQuickPercent('${task.id}', 0)">0%</button>
-            <button type="button" class="btn-percent-pill ${task.progress === 25 ? 'active' : ''}" onclick="EmployeeModule.applyQuickPercent('${task.id}', 25)">25%</button>
-            <button type="button" class="btn-percent-pill ${task.progress === 50 ? 'active' : ''}" onclick="EmployeeModule.applyQuickPercent('${task.id}', 50)">50%</button>
-            <button type="button" class="btn-percent-pill ${task.progress === 75 ? 'active' : ''}" onclick="EmployeeModule.applyQuickPercent('${task.id}', 75)">75%</button>
-            <button type="button" class="btn-percent-pill ${task.progress === 100 ? 'active' : ''}" onclick="EmployeeModule.applyQuickPercent('${task.id}', 100)">100%</button>
+            <button type="button" class="btn-percent-pill ${activeProgress === 0 ? 'active' : ''}" onclick="EmployeeModule.applyQuickPercent('${task.id}', 0)">0%</button>
+            <button type="button" class="btn-percent-pill ${activeProgress === 25 ? 'active' : ''}" onclick="EmployeeModule.applyQuickPercent('${task.id}', 25)">25%</button>
+            <button type="button" class="btn-percent-pill ${activeProgress === 50 ? 'active' : ''}" onclick="EmployeeModule.applyQuickPercent('${task.id}', 50)">50%</button>
+            <button type="button" class="btn-percent-pill ${activeProgress === 75 ? 'active' : ''}" onclick="EmployeeModule.applyQuickPercent('${task.id}', 75)">75%</button>
+            <button type="button" class="btn-percent-pill ${activeProgress === 100 ? 'active' : ''}" onclick="EmployeeModule.applyQuickPercent('${task.id}', 100)">100%</button>
           </div>
 
           <button class="btn btn-sm btn-secondary" onclick="EmployeeModule.saveCardProgress('${task.id}')" style="margin-top:0.25rem;">
-            💾 Confirmar Avance (<span id="btnPercentVal-${task.id}">${task.progress}</span>%)
+            💾 Confirmar Mi Avance (<span id="btnPercentVal-${task.id}">${activeProgress}</span>%)
           </button>
         </div>
 
         <!-- Meta -->
         <div class="task-card-meta">
           <div style="font-size: 0.8rem; color: var(--text-muted);">
-            Entregables: ${(task.checklist || []).filter(c => c.completed).length}/${(task.checklist || []).length}
+            Entregables: ${completedChecklistCount}/${totalChecklistCount}
           </div>
 
           <div class="task-deadline ${alert.level === 'danger' ? 'urgent' : (alert.level === 'warning' ? 'warning' : '')}">
@@ -333,51 +348,16 @@ const EmployeeModule = {
 
   // Update Checklist Item completion
   toggleChecklistItem(taskId, checkId, completed) {
-    const task = window.appStore.getTaskById(taskId);
-    if (!task || !task.checklist) return;
+    const res = window.appStore.toggleUserChecklistItem(taskId, checkId, completed);
+    if (!res) return;
 
-    const item = task.checklist.find(c => c.id === checkId);
-    if (item) {
-      item.completed = completed;
-      // Recalculate progress percentage
-      const completedCount = task.checklist.filter(c => c.completed).length;
-      const progress = Math.round((completedCount / task.checklist.length) * 100);
-      
-      const updates = {
-        checklist: task.checklist,
-        progress: progress
-      };
-
-      if (progress === 100) {
-        updates.status = 'completado';
-      } else if (progress > 0 && task.status === 'pendiente') {
-        updates.status = 'en_progreso';
-      }
-
-      window.appStore.updateTask(taskId, updates);
-      
-      const currentUser = window.appStore.getCurrentUser();
-      const userName = currentUser ? currentUser.name : 'Un docente';
-
-      if (completed) {
-        window.appStore.addNotification({
-          targetUserId: 'admin',
-          targetRole: 'admin',
-          title: progress === 100 ? '✅ Tarea Completada al 100%' : '☑️ Entregable Cumplido',
-          message: `${userName} completó el entregable "${item.text}" en "${task.title}" (Progreso: ${progress}%).`,
-          type: progress === 100 ? 'success' : 'info',
-          taskId: task.id
-        });
-      }
-
-      if (progress === 100) {
-        AlertsEngine.showToast('¡Tarea Completada!', 'Has completado todos los entregables requeridos.', 'success');
-      }
-
-      // Re-render task detail modal and lists
-      App.openTaskDetailModal(taskId);
-      this.render();
+    if (res.userProgress === 100) {
+      AlertsEngine.showToast('¡Tarea Completada!', 'Has completado todos los entregables requeridos.', 'success');
     }
+
+    // Re-render task detail modal and lists
+    App.openTaskDetailModal(taskId);
+    this.render();
   }
 };
 
