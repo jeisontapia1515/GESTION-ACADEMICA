@@ -1,4 +1,4 @@
-const CACHE_NAME = 'esfim-decanatura-v1.0.5';
+const CACHE_NAME = 'esfim-decanatura-v1.0.6';
 const STATIC_ASSETS = [
   '/',
   '/login.html',

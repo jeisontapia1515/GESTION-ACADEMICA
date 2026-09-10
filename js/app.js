@@ -61,6 +61,15 @@ const App = {
           }
           this.refreshCurrentView();
           this.updateNotificationBadge();
+        } else if (data.type === 'TASK_DELETED') {
+          if (Array.isArray(data.tasks)) {
+            window.appStore.saveTasks(data.tasks);
+          } else if (data.taskId) {
+            const currentTasks = window.appStore.getTasks().filter(t => String(t.id) !== String(data.taskId) && String(t._id) !== String(data.taskId));
+            window.appStore.saveTasks(currentTasks);
+          }
+          this.refreshCurrentView();
+          this.updateNotificationBadge();
         } else if (data.type === 'NOTIFICATION_ADDED') {
           this.updateNotificationBadge();
         }

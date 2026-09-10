@@ -603,27 +603,54 @@ const AdminModule = {
     const task = window.appStore.getTaskById(taskId);
     if (!task) return;
 
+    const isDraft = Boolean(task.isDraft || task.status === 'borrador' || !task.assignedTo || (Array.isArray(task.assignedTo) && task.assignedTo.length === 0));
+
+    // Si el modal de detalle está abierto, cerrarlo para no obstruir el modal de confirmación
+    document.getElementById('taskDetailModal')?.classList.remove('active');
+
     const modal = document.getElementById('confirmDeleteTaskModal');
     if (modal) {
-      document.getElementById('confirmDeleteTaskTitle').textContent = task.title;
+      const headerTitle = modal.querySelector('.modal-header h3');
+      const bodyDesc = modal.querySelector('#confirmDeleteTaskTitle');
+      const infoBox = modal.querySelector('.modal-body div');
+
+      if (headerTitle) {
+        headerTitle.innerHTML = isDraft ? '🗑️ Descartar Borrador' : '🗑️ Eliminar Compromiso Cumplido';
+      }
+      if (bodyDesc) {
+        bodyDesc.textContent = `"${task.title}"`;
+      }
+      if (infoBox) {
+        infoBox.innerHTML = isDraft
+          ? '⚡ <strong>Descartar Borrador:</strong> Este compromiso no asignado se eliminará de inmediato.'
+          : '⚡ <strong>Optimización de Cuota:</strong> Esta acción elimina el documento y comentarios de MongoDB Atlas, liberando almacenamiento en la base de datos gratuita.';
+      }
+
       document.getElementById('confirmDeleteTaskId').value = task.id;
       modal.classList.add('active');
     } else {
-      if (confirm(`¿Confirma eliminar definitivamente la tarea "${task.title}"? Esta acción liberará almacenamiento en MongoDB.`)) {
+      if (confirm(`¿Confirma eliminar ${isDraft ? 'el borrador' : 'la tarea'} "${task.title}"?`)) {
         this.executeDeleteTask(taskId);
       }
     }
   },
 
   async executeDeleteTask(taskId) {
-    await window.appStore.deleteTask(taskId);
-    AlertsEngine.showToast(
-      'Tarea Eliminada',
-      'El compromiso fue eliminado de MongoDB y se liberó espacio en la base de datos.',
-      'success'
-    );
+    const task = window.appStore.getTaskById(taskId);
+    const isDraft = task && (task.isDraft || task.status === 'borrador' || !task.assignedTo || (Array.isArray(task.assignedTo) && task.assignedTo.length === 0));
+    const title = task ? task.title : 'Compromiso';
+
     document.getElementById('confirmDeleteTaskModal')?.classList.remove('active');
     document.getElementById('taskDetailModal')?.classList.remove('active');
+
+    await window.appStore.deleteTask(taskId);
+
+    AlertsEngine.showToast(
+      isDraft ? 'Borrador Descartado' : 'Tarea Eliminada',
+      `"${title}" fue eliminado exitosamente.`,
+      'success'
+    );
+
     this.render();
   },
 

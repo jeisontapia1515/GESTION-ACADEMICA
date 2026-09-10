@@ -408,6 +408,48 @@ class AppStore {
     return updatedTask;
   }
 
+  // Delete Task permanently (removes locally and from MongoDB backend)
+  async deleteTask(taskId) {
+    const sId = String(taskId);
+    const tasks = this.getTasks();
+    const target = tasks.find(t => String(t.id) === sId || String(t._id) === sId);
+    
+    // Filtrar de la lista local
+    const remaining = tasks.filter(t => String(t.id) !== sId && String(t._id) !== sId);
+    this.saveTasks(remaining);
+
+    // Notificar por el canal de tiempo real (BroadcastChannel)
+    if (realtimeSyncChannel) {
+      try {
+        realtimeSyncChannel.postMessage({
+          type: 'TASK_DELETED',
+          taskId: sId,
+          tasks: remaining,
+          timestamp: Date.now()
+        });
+      } catch (e) {}
+    }
+
+    // Si tiene token y es un id de MongoDB, eliminar del backend
+    const token = this.getToken();
+    const realId = target ? (target._id || target.id) : taskId;
+    const isValidMongoId = realId && /^[0-9a-fA-F]{24}$/.test(String(realId));
+    if (token && isValidMongoId) {
+      try {
+        await fetch(`/api/tasks/${realId}`, {
+          method: 'DELETE',
+          headers: {
+            'Authorization': `Bearer ${token}`
+          }
+        });
+      } catch (err) {
+        console.warn('Error al eliminar tarea en servidor backend:', err);
+      }
+    }
+
+    return target;
+  }
+
   lastKnownTasksVersion = 0;
 
   async syncTasksFromServer(includeArchived = false) {
