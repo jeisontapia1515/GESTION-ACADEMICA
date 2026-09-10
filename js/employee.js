@@ -302,13 +302,14 @@ const EmployeeModule = {
 
   saveCardProgress(taskId, overrideValue = null) {
     const slider = document.getElementById(`slider-${taskId}`);
-    const value = overrideValue !== null ? overrideValue : (slider ? slider.value : 0);
+    const rawVal = overrideValue !== null ? overrideValue : (slider ? slider.value : 0);
+    const value = Math.min(100, Math.max(0, parseInt(rawVal, 10) || 0));
     const updated = window.appStore.updateTaskProgress(taskId, value, '');
     
     AlertsEngine.showToast(
       'Porcentaje Actualizado',
-      `El avance de la actividad "${updated.title}" se registró al ${value}%.`,
-      parseInt(value, 10) === 100 ? 'success' : 'info'
+      `El avance de la actividad "${updated ? updated.title : 'Actividad'}" se registró al ${value}%.`,
+      value === 100 ? 'success' : 'info'
     );
 
     this.render();

@@ -307,6 +307,65 @@ class AppStore {
     return this.getTasks().find(t => String(t.id) === sId || String(t._id) === sId);
   }
 
+  // Update Task (persists locally and syncs to MongoDB backend)
+  updateTask(taskId, updates) {
+    const tasks = this.getTasks();
+    const sId = String(taskId);
+    const index = tasks.findIndex(t => String(t.id) === sId || String(t._id) === sId);
+    if (index === -1) {
+      console.warn('updateTask: tarea no encontrada con ID:', taskId);
+      return null;
+    }
+
+    const currentTask = tasks[index];
+    const updatedTask = {
+      ...currentTask,
+      ...updates,
+      updatedAt: new Date().toISOString()
+    };
+
+    tasks[index] = updatedTask;
+    this.saveTasks(tasks);
+
+    // Persistir asíncronamente en backend MongoDB si hay sesión activa
+    const token = this.getToken();
+    const realId = updatedTask._id || updatedTask.id;
+    const isValidMongoId = realId && /^[0-9a-fA-F]{24}$/.test(String(realId));
+    if (token && isValidMongoId) {
+      const payload = { ...updates };
+      delete payload._id;
+      delete payload.id;
+
+      fetch(`/api/tasks/${realId}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify(payload)
+      })
+      .then(r => r.json())
+      .then(data => {
+        if (data.success && data.task) {
+          const freshTasks = this.getTasks();
+          const fIdx = freshTasks.findIndex(t => String(t.id) === sId || String(t._id) === sId);
+          if (fIdx !== -1) {
+            freshTasks[fIdx] = {
+              ...data.task,
+              id: data.task.id || (data.task._id ? data.task._id.toString() : sId)
+            };
+            this.saveTasks(freshTasks);
+          }
+        }
+      })
+      .catch(err => {
+        console.warn('Error al sincronizar actualización de tarea en backend:', err);
+      });
+    }
+
+    return updatedTask;
+  }
+
   lastKnownTasksVersion = 0;
 
   async syncTasksFromServer(includeArchived = false) {

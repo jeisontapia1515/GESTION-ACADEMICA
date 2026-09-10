@@ -777,7 +777,7 @@ const App = {
     const updated = window.appStore.updateTaskProgress(taskId, value, note);
     AlertsEngine.showToast(
       'Porcentaje Actualizado',
-      `Avance registrado al ${value}% en "${updated.title}".`,
+      `Avance registrado al ${value}% en "${updated ? updated.title : 'Actividad'}".`,
       value === 100 ? 'success' : 'info'
     );
     this.openTaskDetailModal(taskId);
