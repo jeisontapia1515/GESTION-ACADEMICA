@@ -16,6 +16,7 @@ const App = {
       await window.appStore.syncNotificationsFromServer();
     }
     if (window.EmailModule) EmailModule.init();
+    this.setupRealtimeSync();
     this.refreshCurrentView();
     this.updateNotificationBadge();
     this.startLiveSyncTimer();
@@ -26,15 +27,54 @@ const App = {
   startLiveSyncTimer() {
     if (this.liveSyncIntervalId) clearInterval(this.liveSyncIntervalId);
 
-    // Heartbeat check every 6 seconds without querying MongoDB Atlas directly
+    // Heartbeat check cada 2.5 segundos con costo 0 a MongoDB Atlas
     this.liveSyncIntervalId = setInterval(async () => {
       if (document.visibilityState === 'hidden') return;
       await this.checkLiveUpdates();
-    }, 6000);
+    }, 2500);
 
-    // Re-check immediately when user switches back to this window/tab
+    // Re-check inmediatamente al recuperar foco
     window.addEventListener('focus', () => {
       this.checkLiveUpdates();
+    });
+  },
+
+  setupRealtimeSync() {
+    if (typeof BroadcastChannel !== 'undefined') {
+      const channel = new BroadcastChannel('esfim_decanatura_realtime_sync');
+      channel.onmessage = (event) => {
+        const data = event.data;
+        if (!data) return;
+        if (data.type === 'TASK_UPDATED') {
+          if (Array.isArray(data.tasks)) {
+            window.appStore.saveTasks(data.tasks);
+          } else if (data.task) {
+            const currentTasks = window.appStore.getTasks();
+            const sId = String(data.task.id || data.task._id);
+            const idx = currentTasks.findIndex(t => String(t.id) === sId || String(t._id) === sId);
+            if (idx !== -1) {
+              currentTasks[idx] = data.task;
+            } else {
+              currentTasks.unshift(data.task);
+            }
+            window.appStore.saveTasks(currentTasks);
+          }
+          this.refreshCurrentView();
+          this.updateNotificationBadge();
+        } else if (data.type === 'NOTIFICATION_ADDED') {
+          this.updateNotificationBadge();
+        }
+      };
+    }
+
+    // Storage event listener nativo para sincronizar pestañas paralelas
+    window.addEventListener('storage', (e) => {
+      if (e.key === 'gestorpro_tasks_decanatura') {
+        this.refreshCurrentView();
+        this.updateNotificationBadge();
+      } else if (e.key === 'gestorpro_notifications_decanatura') {
+        this.updateNotificationBadge();
+      }
     });
   },
 

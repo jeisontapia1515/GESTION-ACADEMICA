@@ -10,6 +10,11 @@ const STORAGE_KEYS = {
   NOTIFICATIONS: 'gestorpro_notifications_decanatura'
 };
 
+// Canal de difusión en tiempo real entre sesiones y pestañas (0ms latency)
+const realtimeSyncChannel = (typeof BroadcastChannel !== 'undefined')
+  ? new BroadcastChannel('esfim_decanatura_realtime_sync')
+  : null;
+
 // Áreas Estructuradas de la Decanatura de Investigación
 const DECANATURA_AREAS = {
   formativa: {
@@ -326,6 +331,19 @@ class AppStore {
 
     tasks[index] = updatedTask;
     this.saveTasks(tasks);
+
+    // Difusión instantánea en tiempo real a todas las pantallas activas (Decano / Gestor / Docentes)
+    if (realtimeSyncChannel) {
+      try {
+        realtimeSyncChannel.postMessage({
+          type: 'TASK_UPDATED',
+          taskId: taskId,
+          task: updatedTask,
+          tasks: tasks,
+          timestamp: Date.now()
+        });
+      } catch (e) {}
+    }
 
     // Persistir asíncronamente en backend MongoDB si hay sesión activa
     const token = this.getToken();
@@ -1186,6 +1204,16 @@ class AppStore {
 
     if (window.App && window.App.updateNotificationBadge) {
       window.App.updateNotificationBadge();
+    }
+
+    if (realtimeSyncChannel) {
+      try {
+        realtimeSyncChannel.postMessage({
+          type: 'NOTIFICATION_ADDED',
+          notification: newNotif,
+          timestamp: Date.now()
+        });
+      } catch (e) {}
     }
 
     return newNotif;

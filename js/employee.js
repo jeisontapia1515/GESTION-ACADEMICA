@@ -240,16 +240,16 @@ const EmployeeModule = {
             />
           </div>
 
-          <div class="quick-percent-pills">
-            <button type="button" class="btn-percent-pill ${activeProgress === 0 ? 'active' : ''}" onclick="EmployeeModule.applyQuickPercent('${task.id}', 0)">0%</button>
-            <button type="button" class="btn-percent-pill ${activeProgress === 25 ? 'active' : ''}" onclick="EmployeeModule.applyQuickPercent('${task.id}', 25)">25%</button>
-            <button type="button" class="btn-percent-pill ${activeProgress === 50 ? 'active' : ''}" onclick="EmployeeModule.applyQuickPercent('${task.id}', 50)">50%</button>
-            <button type="button" class="btn-percent-pill ${activeProgress === 75 ? 'active' : ''}" onclick="EmployeeModule.applyQuickPercent('${task.id}', 75)">75%</button>
-            <button type="button" class="btn-percent-pill ${activeProgress === 100 ? 'active' : ''}" onclick="EmployeeModule.applyQuickPercent('${task.id}', 100)">100%</button>
+          <div class="quick-percent-pills" id="pills-${task.id}">
+            <button type="button" class="btn-percent-pill ${activeProgress === 0 ? 'active' : ''}" data-value="0" onclick="EmployeeModule.selectQuickPercent('${task.id}', 0)">0%</button>
+            <button type="button" class="btn-percent-pill ${activeProgress === 25 ? 'active' : ''}" data-value="25" onclick="EmployeeModule.selectQuickPercent('${task.id}', 25)">25%</button>
+            <button type="button" class="btn-percent-pill ${activeProgress === 50 ? 'active' : ''}" data-value="50" onclick="EmployeeModule.selectQuickPercent('${task.id}', 50)">50%</button>
+            <button type="button" class="btn-percent-pill ${activeProgress === 75 ? 'active' : ''}" data-value="75" onclick="EmployeeModule.selectQuickPercent('${task.id}', 75)">75%</button>
+            <button type="button" class="btn-percent-pill ${activeProgress === 100 ? 'active' : ''}" data-value="100" onclick="EmployeeModule.selectQuickPercent('${task.id}', 100)">100%</button>
           </div>
 
-          <button class="btn btn-sm btn-secondary" onclick="EmployeeModule.saveCardProgress('${task.id}')" style="margin-top:0.25rem;">
-            💾 Confirmar Mi Avance (<span id="btnPercentVal-${task.id}">${activeProgress}</span>%)
+          <button type="button" class="btn btn-sm btn-primary" id="btnConfirm-${task.id}" onclick="EmployeeModule.saveCardProgress('${task.id}')" style="margin-top:0.4rem; width:100%; display:flex; align-items:center; justify-content:center; gap:0.4rem; font-weight:600;">
+            💾 Confirmar y Enviar Avance (<span id="btnPercentVal-${task.id}">${activeProgress}</span>%)
           </button>
         </div>
 
@@ -269,7 +269,7 @@ const EmployeeModule = {
           <button class="btn btn-warning btn-sm" onclick="EmployeeModule.openReportIssueModal('${task.id}')" title="Notificar novedades o dificultades al Decano">
             🛑 Reportar Dificultad
           </button>
-          <button class="btn btn-primary btn-sm" onclick="App.openTaskDetailModal('${task.id}')">
+          <button class="btn btn-secondary btn-sm" onclick="App.openTaskDetailModal('${task.id}')">
             Detalles & Entregables
           </button>
         </div>
@@ -278,37 +278,64 @@ const EmployeeModule = {
   },
 
   handleSliderInput(taskId, value) {
+    const val = parseInt(value, 10) || 0;
     const label = document.getElementById(`percentLabel-${taskId}`);
     const bar = document.getElementById(`barFill-${taskId}`);
     const btnVal = document.getElementById(`btnPercentVal-${taskId}`);
-    if (label) label.textContent = `${value}%`;
+
+    if (label) label.textContent = `${val}%`;
     if (bar) {
-      bar.style.width = `${value}%`;
-      if (parseInt(value, 10) === 100) {
+      bar.style.width = `${val}%`;
+      if (val === 100) {
         bar.classList.add('completado');
       } else {
         bar.classList.remove('completado');
       }
     }
-    if (btnVal) btnVal.textContent = value;
+    if (btnVal) btnVal.textContent = val;
+
+    // Resaltar la píldora que coincide con el valor seleccionado
+    const pillsContainer = document.getElementById(`pills-${taskId}`);
+    if (pillsContainer) {
+      pillsContainer.querySelectorAll('.btn-percent-pill').forEach(pill => {
+        const pVal = parseInt(pill.getAttribute('data-value'), 10);
+        if (pVal === val) {
+          pill.classList.add('active');
+        } else {
+          pill.classList.remove('active');
+        }
+      });
+    }
   },
 
-  applyQuickPercent(taskId, value) {
+  // Seleccionar avance rápido: solo actualiza la selección visual; NO guarda automáticamente
+  selectQuickPercent(taskId, value) {
     const slider = document.getElementById(`slider-${taskId}`);
     if (slider) slider.value = value;
     this.handleSliderInput(taskId, value);
-    this.saveCardProgress(taskId, value);
   },
 
+  applyQuickPercent(taskId, value) {
+    this.selectQuickPercent(taskId, value);
+  },
+
+  // Guarda y envía el avance exclusivamente al presionar el botón de confirmación
   saveCardProgress(taskId, overrideValue = null) {
     const slider = document.getElementById(`slider-${taskId}`);
     const rawVal = overrideValue !== null ? overrideValue : (slider ? slider.value : 0);
     const value = Math.min(100, Math.max(0, parseInt(rawVal, 10) || 0));
+
+    const btn = document.getElementById(`btnConfirm-${taskId}`);
+    if (btn) {
+      btn.disabled = true;
+      btn.innerHTML = `⏳ Transmitiendo (${value}%)...`;
+    }
+
     const updated = window.appStore.updateTaskProgress(taskId, value, '');
     
     AlertsEngine.showToast(
-      'Porcentaje Actualizado',
-      `El avance de la actividad "${updated ? updated.title : 'Actividad'}" se registró al ${value}%.`,
+      'Avance Confirmado y Transmitido',
+      `El avance de "${updated ? updated.title : 'Actividad'}" se registró al ${value}%. Notificado a Decanatura en tiempo real.`,
       value === 100 ? 'success' : 'info'
     );
 
