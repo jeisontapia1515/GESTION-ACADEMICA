@@ -299,7 +299,31 @@ class AppStore {
   // Tasks
   getTasks() {
     const data = localStorage.getItem(STORAGE_KEYS.TASKS);
-    return data ? JSON.parse(data) : [];
+    if (!data) return [];
+    try {
+      const list = JSON.parse(data);
+      if (!Array.isArray(list)) return [];
+      const adminEmails = ['juan.perdomo@esfim.edu.co', 'eduardo.puello@esfim.edu.co'];
+      return list.map(t => {
+        if (t && Array.isArray(t.assigneeProgress)) {
+          t.assigneeProgress = t.assigneeProgress.filter(ap => {
+            const uEmail = String(ap.userEmail || '').toLowerCase();
+            const uId = String(ap.userId || '').toLowerCase();
+            const isAdm = adminEmails.some(ae => uEmail.includes(ae) || uId.includes(ae));
+            return !isAdm;
+          });
+        }
+        if (t && Array.isArray(t.assignedTo)) {
+          t.assignedTo = t.assignedTo.filter(a => {
+            const raw = String(typeof a === 'object' && a ? (a.email || a.id || '') : a).toLowerCase();
+            return !adminEmails.some(ae => raw.includes(ae));
+          });
+        }
+        return t;
+      });
+    } catch (e) {
+      return [];
+    }
   }
 
   saveTasks(tasks) {
@@ -583,6 +607,16 @@ class AppStore {
       task.assigneeProgress = [];
     }
 
+    // Purgar de assigneeProgress a administradores institucionales
+    const adminEmails = ['juan.perdomo@esfim.edu.co', 'eduardo.puello@esfim.edu.co'];
+    task.assigneeProgress = task.assigneeProgress.filter(ap => {
+      const uEmail = String(ap.userEmail || '').toLowerCase();
+      const uId = String(ap.userId || '').toLowerCase();
+      const u = this.getUserById(ap.userId || ap.userEmail);
+      if (u && u.role === 'admin') return false;
+      return !adminEmails.some(ae => uEmail.includes(ae) || uId.includes(ae));
+    });
+
     let targetDocentes = [];
     if (task.assignedTo === 'all') {
       targetDocentes = this.getEmployees();
@@ -591,10 +625,17 @@ class AppStore {
         if (typeof item === 'object' && item && item.email) return item;
         const raw = typeof item === 'object' && item ? (item.id || item._id || item.email) : item;
         return this.getUserById(raw) || { id: raw, name: String(raw).split('@')[0], email: raw };
-      }).filter(Boolean);
+      }).filter(d => {
+        if (!d) return false;
+        if (d.role === 'admin') return false;
+        const dEmail = String(d.email || '').toLowerCase();
+        return !adminEmails.some(ae => dEmail.includes(ae));
+      });
     } else if (task.assignedTo) {
       const single = typeof task.assignedTo === 'object' ? task.assignedTo : (this.getUserById(task.assignedTo) || { id: task.assignedTo, name: 'Docente', email: task.assignedTo });
-      targetDocentes = [single];
+      if (single && single.role !== 'admin' && !adminEmails.some(ae => String(single.email || '').toLowerCase().includes(ae))) {
+        targetDocentes = [single];
+      }
     }
 
     const templateChecklist = Array.isArray(task.checklist) ? task.checklist.map(c => ({

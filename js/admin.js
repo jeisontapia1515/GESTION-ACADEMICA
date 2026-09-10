@@ -150,8 +150,9 @@ const AdminModule = {
 
   renderKPIs(tasks) {
     const total = tasks.length;
-    const inProgress = tasks.filter(t => t.status === 'en_progreso' || t.status === 'pendiente').length;
+    const inProgress = tasks.filter(t => (t.status === 'en_progreso' || t.status === 'pendiente') && !t.isDraft && t.status !== 'borrador').length;
     const completed = tasks.filter(t => t.status === 'completado').length;
+    const drafts = tasks.filter(t => t.isDraft || t.status === 'borrador' || !t.assignedTo || (Array.isArray(t.assignedTo) && t.assignedTo.length === 0)).length;
     
     // Alert counts
     let overdueCount = 0;
@@ -173,7 +174,15 @@ const AdminModule = {
         <div class="kpi-icon-wrapper">🏛️</div>
         <div class="kpi-details">
           <span class="kpi-value">${total}</span>
-          <span class="kpi-label">Tareas Asignadas</span>
+          <span class="kpi-label">Tareas Registradas</span>
+        </div>
+      </div>
+
+      <div class="kpi-card draft" onclick="AdminModule.applyAlertFilter('borrador')" style="cursor:pointer;" title="Ver borradores guardados listos para asignar">
+        <div class="kpi-icon-wrapper">📝</div>
+        <div class="kpi-details">
+          <span class="kpi-value" style="color: #38bdf8;">${drafts}</span>
+          <span class="kpi-label">Borradores / Por Asignar</span>
         </div>
       </div>
 
@@ -209,7 +218,7 @@ const AdminModule = {
         </div>
       </div>
 
-      <div class="kpi-card completed">
+      <div class="kpi-card completed" onclick="AdminModule.applyAlertFilter('completado')" style="cursor:pointer;" title="Ver tareas aprobadas y cumplidas">
         <div class="kpi-icon-wrapper">✅</div>
         <div class="kpi-details">
           <span class="kpi-value" style="color: #10b981;">${completed}</span>
@@ -223,6 +232,11 @@ const AdminModule = {
     this.currentAlertFilter = alertType;
     const filterSelect = document.getElementById('adminAlertSelect');
     if (filterSelect) filterSelect.value = alertType;
+    if (alertType === 'borrador') {
+      const mainFilterSelect = document.getElementById('adminFilterSelect');
+      if (mainFilterSelect) mainFilterSelect.value = 'borrador';
+      this.currentFilter = 'borrador';
+    }
     this.renderTasks(window.appStore.getTasks(), window.appStore.getEmployees());
   },
 
@@ -250,7 +264,7 @@ const AdminModule = {
         const matchIds = [empId, targetEmp?.id, targetEmp?._id, targetEmp?.email].filter(Boolean).map(x => String(x).toLowerCase());
         const assignees = Array.isArray(t.assignedTo) ? t.assignedTo : [t.assignedTo];
         filterMatch = t.assignedTo === 'all' || assignees.some(a => matchIds.includes(String(typeof a === 'object' ? (a.id || a._id || a.email || '') : a).toLowerCase()));
-      } else if (this.currentFilter === 'borrador') {
+      } else if (this.currentFilter === 'borrador' || this.currentAlertFilter === 'borrador') {
         filterMatch = Boolean(t.status === 'borrador' || t.isDraft || !t.assignedTo || (Array.isArray(t.assignedTo) && t.assignedTo.length === 0));
       } else if (this.currentFilter !== 'all') {
         filterMatch = t.status === this.currentFilter && !t.isDraft && t.status !== 'borrador';
@@ -258,7 +272,9 @@ const AdminModule = {
 
       // Alert Filter
       let alertMatch = true;
-      if (this.currentAlertFilter === 'danger') {
+      if (this.currentAlertFilter === 'borrador') {
+        alertMatch = Boolean(t.status === 'borrador' || t.isDraft || !t.assignedTo || (Array.isArray(t.assignedTo) && t.assignedTo.length === 0));
+      } else if (this.currentAlertFilter === 'danger') {
         alertMatch = alert.level === 'danger';
       } else if (this.currentAlertFilter === 'warning') {
         alertMatch = alert.level === 'warning' || alert.level === 'warning-soft';
@@ -297,6 +313,7 @@ const AdminModule = {
     if (task.assignedTo === 'all') {
       return window.appStore.getEmployees();
     }
+    const adminEmails = ['juan.perdomo@esfim.edu.co', 'eduardo.puello@esfim.edu.co'];
     const list = Array.isArray(task.assignedTo) ? task.assignedTo : [task.assignedTo];
     return list.map(item => {
       if (typeof item === 'object' && item && item.email) return item;
@@ -311,7 +328,13 @@ const AdminModule = {
         };
       }
       return u;
-    }).filter(Boolean);
+    }).filter(a => {
+      if (!a) return false;
+      if (a.role === 'admin') return false;
+      const email = String(a.email || '').toLowerCase();
+      if (adminEmails.some(ae => email.includes(ae))) return false;
+      return true;
+    });
   },
 
   createTaskCardHtml(task, employees) {
@@ -324,7 +347,8 @@ const AdminModule = {
     if (isGroup) {
       window.appStore.ensureAssigneeProgress(task);
     }
-    const memberProgressList = isGroup ? (task.assigneeProgress || []) : [];
+    const adminEmails = ['juan.perdomo@esfim.edu.co', 'eduardo.puello@esfim.edu.co'];
+    const memberProgressList = isGroup ? (task.assigneeProgress || []).filter(mp => !adminEmails.some(ae => String(mp.userEmail || '').toLowerCase().includes(ae))) : [];
 
     const dueDateFormatted = task.dueDate ? new Date(task.dueDate).toLocaleString('es-ES', {
       day: '2-digit',
@@ -703,18 +727,22 @@ const AdminModule = {
   populateAssigneesChecklist() {
     const container = document.getElementById('assigneesCheckboxContainer');
     if (!container) return;
-    const allUsers = window.appStore.getUsers();
-    // Include all active staff members so the Gestor can delegate to teachers or assign to himself for testing
-    const assignableUsers = allUsers.filter(u => u.isActive !== false);
+    const employees = window.appStore.getEmployees().filter(u => u.isActive !== false);
 
-    container.innerHTML = assignableUsers.map(emp => {
+    if (employees.length === 0) {
+      container.innerHTML = `
+        <div style="padding:1rem; text-align:center; color:var(--text-muted); font-size:0.85rem; border:1px dashed var(--border-subtle); border-radius:6px;">
+          No hay docentes registrados en la planta aún. Registra docentes en "👥 Gestión de Docentes" o ingresa sus correos institucionales abajo.
+        </div>
+      `;
+      this.updateAssigneesSummary();
+      return;
+    }
+
+    container.innerHTML = employees.map(emp => {
       const uId = emp.id || emp._id;
       const areaObj = emp.area && window.DECANATURA_AREAS[emp.area] ? window.DECANATURA_AREAS[emp.area] : null;
-      let areaBadge = areaObj ? `<span class="badge ${areaObj.badgeClass}" style="font-size:0.65rem; padding:1px 6px;">${areaObj.icon} ${areaObj.name}</span>` : '';
-      if (emp.role === 'admin') {
-        const isAdminDecano = (emp.name || '').toLowerCase().includes('perdomo') || (emp.email || '').includes('decano');
-        areaBadge = `<span class="badge badge-warning" style="font-size:0.65rem; padding:1px 6px;">🛡️ ${isAdminDecano ? 'Decano' : 'Gestor'}</span>`;
-      }
+      const areaBadge = areaObj ? `<span class="badge ${areaObj.badgeClass}" style="font-size:0.65rem; padding:1px 6px;">${areaObj.icon} ${areaObj.name}</span>` : '';
       return `
         <label class="assignee-checkbox-row" style="display:flex; align-items:center; gap:0.5rem; padding:0.35rem 0.5rem; border-radius:6px; background:var(--surface-1); cursor:pointer; font-size:0.83rem; transition:background 0.15s; border:1px solid transparent;">
           <input type="checkbox" name="assigneeDocenteCheckbox" value="${uId}" data-email="${emp.email}" data-name="${emp.name}" onchange="AdminModule.updateAssigneesSummary()" style="cursor:pointer; width:16px; height:16px;" />
@@ -1037,20 +1065,25 @@ const AdminModule = {
   populateDraftAssigneesChecklist(task) {
     const container = document.getElementById('assignDraftCheckboxContainer');
     if (!container) return;
-    const allUsers = window.appStore.getUsers();
-    const assignableUsers = allUsers.filter(u => u.isActive !== false);
+    const employees = window.appStore.getEmployees().filter(u => u.isActive !== false);
+
+    if (employees.length === 0) {
+      container.innerHTML = `
+        <div style="padding:1rem; text-align:center; color:var(--text-muted); font-size:0.85rem; border:1px dashed var(--border-subtle); border-radius:6px;">
+          No hay docentes registrados en la planta aún. Registra docentes o ingresa correos abajo.
+        </div>
+      `;
+      this.updateDraftAssigneesSummary();
+      return;
+    }
 
     const currentlyAssigned = Array.isArray(task?.assignedTo) ? task.assignedTo : [task?.assignedTo].filter(Boolean);
     const assignedStrs = currentlyAssigned.map(x => String(typeof x === 'object' ? (x?.id || x?._id || x?.email) : x).toLowerCase());
 
-    container.innerHTML = assignableUsers.map(emp => {
+    container.innerHTML = employees.map(emp => {
       const uId = emp.id || emp._id;
       const areaObj = emp.area && window.DECANATURA_AREAS[emp.area] ? window.DECANATURA_AREAS[emp.area] : null;
-      let areaBadge = areaObj ? `<span class="badge ${areaObj.badgeClass}" style="font-size:0.65rem; padding:1px 6px;">${areaObj.icon} ${areaObj.name}</span>` : '';
-      if (emp.role === 'admin') {
-        const isAdminDecano = (emp.name || '').toLowerCase().includes('perdomo') || (emp.email || '').includes('decano');
-        areaBadge = `<span class="badge badge-warning" style="font-size:0.65rem; padding:1px 6px;">🛡️ ${isAdminDecano ? 'Decano' : 'Gestor'}</span>`;
-      }
+      const areaBadge = areaObj ? `<span class="badge ${areaObj.badgeClass}" style="font-size:0.65rem; padding:1px 6px;">${areaObj.icon} ${areaObj.name}</span>` : '';
       const isChecked = assignedStrs.includes(String(uId).toLowerCase()) || (emp.email && assignedStrs.includes(String(emp.email).toLowerCase()));
 
       return `
