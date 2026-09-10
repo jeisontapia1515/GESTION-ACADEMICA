@@ -466,6 +466,45 @@ class AppStore {
           ...t,
           id: t.id || (t._id ? t._id.toString() : 'task-' + Date.now())
         }));
+
+        // Preservar borradores locales para que jamás se borren al cerrar sesión o recargar
+        const localTasks = this.getTasks();
+        const pendingLocalDrafts = localTasks.filter(lt => 
+          (lt.isDraft || lt.status === 'borrador') && 
+          !mapped.some(mt => String(mt.id) === String(lt.id) || (lt._id && String(mt.id) === String(lt._id)) || (lt.id && String(mt._id) === String(lt.id)))
+        );
+
+        if (pendingLocalDrafts.length > 0) {
+          mapped.unshift(...pendingLocalDrafts);
+          // Auto-sincronizar borradores huérfanos con ID temporal al backend MongoDB
+          pendingLocalDrafts.forEach(async (d) => {
+            if (d.id && String(d.id).startsWith('task-')) {
+              try {
+                const sRes = await fetch('/api/tasks', {
+                  method: 'POST',
+                  headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`
+                  },
+                  body: JSON.stringify(d)
+                });
+                const sData = await sRes.json();
+                if (sData.success && sData.task) {
+                  const nowTasks = this.getTasks();
+                  const targetIdx = nowTasks.findIndex(t => t.id === d.id);
+                  if (targetIdx !== -1) {
+                    nowTasks[targetIdx] = {
+                      ...sData.task,
+                      id: sData.task.id || sData.task._id.toString()
+                    };
+                    this.saveTasks(nowTasks);
+                  }
+                }
+              } catch (err) {}
+            }
+          });
+        }
+
         this.saveTasks(mapped);
         return mapped;
       }
@@ -589,10 +628,24 @@ class AppStore {
             this.saveTasks(currentTasks);
           }
           newTask = serverTask;
+        } else {
+          console.error('Error al persistir tarea/borrador en backend:', data.message || res.statusText);
         }
       } catch (err) {
         console.warn('Error al persistir tarea en backend:', err);
       }
+    }
+
+    // Notificar por el canal de tiempo real (BroadcastChannel)
+    if (realtimeSyncChannel) {
+      try {
+        realtimeSyncChannel.postMessage({
+          type: 'TASK_UPDATED',
+          task: newTask,
+          tasks: this.getTasks(),
+          timestamp: Date.now()
+        });
+      } catch (e) {}
     }
 
     if (isDraft) {

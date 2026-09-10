@@ -67,6 +67,8 @@ router.post("/", protect, adminOnly, async (req, res) => {
     const taskData = { ...req.body };
     delete taskData._id;
     delete taskData.id;
+    if (!taskData.area) taskData.area = "formativa";
+    if (taskData.priority) taskData.priority = String(taskData.priority).toLowerCase().trim();
     const task = await Task.create({ ...taskData, createdBy: req.user._id });
     const obj = task.toJSON ? task.toJSON() : task.toObject();
     obj.id = obj._id ? obj._id.toString() : task._id.toString();
@@ -129,6 +131,7 @@ router.put("/:id", protect, async (req, res) => {
     const updateData = { ...req.body, updatedAt: new Date() };
     delete updateData._id;
     delete updateData.id;
+    if (updateData.priority) updateData.priority = String(updateData.priority).toLowerCase().trim();
 
     if (updateData.status === "completado" || updateData.progress === 100) {
       updateData.completedAt = new Date();
