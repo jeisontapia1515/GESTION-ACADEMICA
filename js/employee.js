@@ -40,7 +40,7 @@ const EmployeeModule = {
 
     this.renderKPIs(myTasks);
     AlertsEngine.renderAlertBanners(myTasks, 'employeeAlertBanners', true);
-    this.renderTaskList(myTasks);
+    this.renderTaskList(myTasks, currentUser);
   },
 
   renderKPIs(myTasks) {
@@ -104,18 +104,20 @@ const EmployeeModule = {
     `;
   },
 
-  renderTaskList(tasks) {
+  renderTaskList(tasks, currentUser = null) {
+    const user = currentUser || window.appStore.getCurrentUser();
     const listContainer = document.getElementById('employeeTasksContainer');
     if (!listContainer) return;
 
     let filtered = tasks.filter(t => {
       const searchMatch = !this.currentSearch ||
-        t.title.toLowerCase().includes(this.currentSearch.toLowerCase()) ||
-        t.description.toLowerCase().includes(this.currentSearch.toLowerCase());
+        (t.title && t.title.toLowerCase().includes(this.currentSearch.toLowerCase())) ||
+        (t.description && t.description.toLowerCase().includes(this.currentSearch.toLowerCase()));
 
       let filterMatch = true;
       if (this.currentFilter !== 'all') {
-        filterMatch = t.status === this.currentFilter;
+        const uProg = window.appStore.getUserTaskProgress(t, user);
+        filterMatch = t.status === this.currentFilter || (uProg && uProg.status === this.currentFilter);
       }
 
       return searchMatch && filterMatch;
@@ -133,10 +135,11 @@ const EmployeeModule = {
     }
 
     listContainer.className = 'tasks-grid fade-in';
-    listContainer.innerHTML = filtered.map(t => this.createEmployeeTaskCardHtml(t)).join('');
+    listContainer.innerHTML = filtered.map(t => this.createEmployeeTaskCardHtml(t, user)).join('');
   },
 
-  createEmployeeTaskCardHtml(task) {
+  createEmployeeTaskCardHtml(task, currentUser = null) {
+    const user = currentUser || window.appStore.getCurrentUser();
     const alert = AlertsEngine.getTaskAlertStatus(task);
     const areaInfo = (window.DECANATURA_AREAS && window.DECANATURA_AREAS[task.area]) || null;
     const dueDateFormatted = new Date(task.dueDate).toLocaleString('es-ES', {
@@ -169,7 +172,7 @@ const EmployeeModule = {
 
     const hasReminders = (task.comments || []).some(c => c.type === 'reminder');
     const isGroup = task.area === 'decanatura' || task.assignedTo === 'all' || (Array.isArray(task.assignedTo) && task.assignedTo.length > 1) || (task.assigneeProgress && task.assigneeProgress.length > 1);
-    const userProgressObj = window.appStore.getUserTaskProgress(task, currentUser);
+    const userProgressObj = window.appStore.getUserTaskProgress(task, user);
     const activeProgress = isGroup ? (userProgressObj.progress || 0) : (task.progress || 0);
     const userChecklist = isGroup ? (userProgressObj.checklist || []) : (task.checklist || []);
     const completedChecklistCount = userChecklist.filter(c => c.completed).length;
