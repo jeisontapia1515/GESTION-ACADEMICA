@@ -4,10 +4,22 @@ const User = require("../models/User");
 const vapidPublicKey = process.env.VAPID_PUBLIC_KEY;
 const vapidPrivateKey = process.env.VAPID_PRIVATE_KEY;
 const vapidSubject = process.env.VAPID_SUBJECT || "mailto:eduardo.puello@esfim.edu.co";
-const isConfigured = Boolean(vapidPublicKey && vapidPrivateKey);
+let isConfigured = false;
 
-if (isConfigured) {
-  webpush.setVapidDetails(vapidSubject, vapidPublicKey, vapidPrivateKey);
+if (vapidPublicKey && vapidPrivateKey) {
+  try {
+    webpush.setVapidDetails(
+      vapidSubject,
+      vapidPublicKey.trim(),
+      vapidPrivateKey.trim()
+    );
+    isConfigured = true;
+  } catch (error) {
+    console.error(
+      "Configuración VAPID inválida. Push desactivado hasta corregir VAPID_PUBLIC_KEY y VAPID_PRIVATE_KEY:",
+      error.message
+    );
+  }
 }
 
 function getPushConfig() {
