@@ -19,6 +19,7 @@ app.use("/api/auth",          require("./routes/auth"));
 app.use("/api/users",         require("./routes/users"));
 app.use("/api/tasks",         require("./routes/tasks"));
 app.use("/api/notifications", require("./routes/notifications"));
+app.use("/api/push",          require("./routes/push"));
 app.use("/api",               require("./routes/email"));
 
 // PWA Manifest and Service Worker

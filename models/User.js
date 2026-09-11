@@ -1,6 +1,17 @@
 const mongoose = require("mongoose");
 const bcrypt = require("bcryptjs");
 
+const pushSubscriptionSchema = new mongoose.Schema({
+  endpoint: { type: String, required: true },
+  expirationTime: { type: Number, default: null },
+  keys: {
+    p256dh: { type: String, required: true },
+    auth: { type: String, required: true }
+  },
+  createdAt: { type: Date, default: Date.now },
+  updatedAt: { type: Date, default: Date.now }
+}, { _id: false });
+
 const userSchema = new mongoose.Schema({
   name: { type: String, required: true, trim: true },
   email: { type: String, required: true, unique: true, lowercase: true, trim: true },
@@ -11,6 +22,7 @@ const userSchema = new mongoose.Schema({
   avatar: { type: String, default: "US" },
   isActive: { type: Boolean, default: true },
   mustChangePassword: { type: Boolean, default: false },
+  pushSubscriptions: { type: [pushSubscriptionSchema], default: [] },
   createdAt: { type: Date, default: Date.now }
 });
 

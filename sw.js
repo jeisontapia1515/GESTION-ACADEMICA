@@ -1,4 +1,4 @@
-const CACHE_NAME = 'esfim-decanatura-v1.0.7';
+const CACHE_NAME = 'esfim-decanatura-v1.0.8';
 const STATIC_ASSETS = [
   '/',
   '/login.html',
@@ -17,6 +17,43 @@ const STATIC_ASSETS = [
   '/img/icon-192.png',
   '/img/icon-512.png'
 ];
+
+self.addEventListener('push', (event) => {
+  if (!event.data) return;
+  let data;
+  try {
+    data = event.data.json();
+  } catch (error) {
+    data = { title: 'Nueva notificación', body: event.data.text() };
+  }
+
+  event.waitUntil(
+    self.registration.showNotification(data.title || 'Gestión ESFIM', {
+      body: data.body || '',
+      icon: data.icon || '/img/icon-192.png',
+      badge: data.badge || '/img/icon-192.png',
+      data: data.data || { url: '/app' },
+      tag: data.data && data.data.notificationId ? data.data.notificationId : 'esfim-notification',
+      renotify: true
+    })
+  );
+});
+
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+  const targetUrl = event.notification.data && event.notification.data.url
+    ? event.notification.data.url
+    : '/app';
+  event.waitUntil(
+    clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) => {
+      const appClient = clientList.find(client => 'focus' in client);
+      if (appClient) {
+        return appClient.focus().then(() => appClient.navigate(targetUrl));
+      }
+      return clients.openWindow(targetUrl);
+    })
+  );
+});
 
 // Install: Cache initial shell
 self.addEventListener('install', (event) => {

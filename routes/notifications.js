@@ -2,6 +2,7 @@ const express = require("express");
 const { protect } = require("../middleware/auth");
 const fs = require("fs");
 const path = require("path");
+const { sendNotificationPush } = require("../services/push");
 
 const router = express.Router();
 const DATA_DIR = path.join(__dirname, "../data");
@@ -63,7 +64,7 @@ router.get("/", protect, (req, res) => {
 });
 
 // POST /api/notifications
-router.post("/", protect, (req, res) => {
+router.post("/", protect, async (req, res) => {
   const { id, title, message, type, taskId, targetUserId, targetUserIds, targetRole, metadata } = req.body;
   if (!title || !message) {
     return res.status(400).json({ success: false, message: "Título y mensaje requeridos." });
@@ -92,6 +93,7 @@ router.post("/", protect, (req, res) => {
 
   allNotifs.unshift(newNotif);
   saveNotifications(allNotifs);
+  await sendNotificationPush(newNotif);
 
   res.status(201).json({ success: true, notification: newNotif });
 });

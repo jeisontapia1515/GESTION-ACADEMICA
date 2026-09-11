@@ -10,6 +10,7 @@ const App = {
     this.initPwa();
     this.bindEvents();
     Auth.init();
+    await this.initPushNotifications();
     await this.syncUsersFromServer();
     await window.appStore.syncTasksFromServer();
     if (window.appStore.syncNotificationsFromServer) {
@@ -1098,17 +1099,20 @@ const App = {
   // PWA (PROGRESSIVE WEB APP) - INSTALACIÓN Y DESCARGA EN DISPOSITIVOS
   // ==========================================================================
   deferredPwaPrompt: null,
+  serviceWorkerRegistration: null,
 
   initPwa() {
     // Registrar Service Worker
     if ('serviceWorker' in navigator) {
-      window.addEventListener('load', () => {
-        navigator.serviceWorker.register('/sw.js').then((reg) => {
+      this.serviceWorkerRegistration = navigator.serviceWorker.register('/sw.js')
+        .then((reg) => {
           console.log('✅ Service Worker ESFIM activo:', reg.scope);
-        }).catch((err) => {
+          return reg;
+        })
+        .catch((err) => {
           console.warn('Registro de SW omitido o fallido:', err);
+          return null;
         });
-      });
     }
 
     // Capturar evento nativo de instalación antes de que el navegador lo oculte
@@ -1135,6 +1139,56 @@ const App = {
 
       AlertsEngine.showToast('Aplicativo Instalado', 'El sistema ESFIM se ha instalado en tu dispositivo.', 'success');
     });
+  },
+
+  async initPushNotifications() {
+    if (!('serviceWorker' in navigator) || !('PushManager' in window) ||
+        !('Notification' in window) || !window.appStore.getToken()) {
+      return;
+    }
+
+    try {
+      const configResponse = await fetch('/api/push/config', {
+        headers: { 'Authorization': `Bearer ${window.appStore.getToken()}` }
+      });
+      const config = await configResponse.json();
+      if (!config.success || !config.enabled || !config.publicKey) return;
+
+      const registration = await this.serviceWorkerRegistration;
+      if (!registration) return;
+
+      let permission = Notification.permission;
+      if (permission === 'default') {
+        permission = await Notification.requestPermission();
+      }
+      if (permission !== 'granted') return;
+
+      let subscription = await registration.pushManager.getSubscription();
+      if (!subscription) {
+        subscription = await registration.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey: this.urlBase64ToUint8Array(config.publicKey)
+        });
+      }
+
+      await fetch('/api/push/subscribe', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${window.appStore.getToken()}`
+        },
+        body: JSON.stringify(subscription)
+      });
+    } catch (error) {
+      console.warn('No se pudo activar el canal de notificaciones push:', error);
+    }
+  },
+
+  urlBase64ToUint8Array(base64String) {
+    const padding = '='.repeat((4 - (base64String.length % 4)) % 4);
+    const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
+    const rawData = window.atob(base64);
+    return Uint8Array.from([...rawData].map(character => character.charCodeAt(0)));
   },
 
   promptPwaInstall() {
