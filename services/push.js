@@ -3,7 +3,7 @@ const User = require("../models/User");
 
 const vapidPublicKey = process.env.VAPID_PUBLIC_KEY;
 const vapidPrivateKey = process.env.VAPID_PRIVATE_KEY;
-const vapidSubject = process.env.VAPID_SUBJECT || "mailto:admin@esfim.edu.co";
+const vapidSubject = process.env.VAPID_SUBJECT || "mailto:eduardo.puello@esfim.edu.co";
 const isConfigured = Boolean(vapidPublicKey && vapidPrivateKey);
 
 if (isConfigured) {
