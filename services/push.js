@@ -1,8 +1,17 @@
 const webpush = require("web-push");
 const User = require("../models/User");
 
-const vapidPublicKey = process.env.VAPID_PUBLIC_KEY;
-const vapidPrivateKey = process.env.VAPID_PRIVATE_KEY;
+function normalizeVapidValue(value, label) {
+  if (!value) return "";
+  return String(value)
+    .replace(new RegExp(`^\\s*${label}\\s*:\\s*`, "i"), "")
+    .replace(/\s+/g, "")
+    .replace(/^["']|["']$/g, "")
+    .replace(/=+$/, "");
+}
+
+const vapidPublicKey = normalizeVapidValue(process.env.VAPID_PUBLIC_KEY, "Public Key");
+const vapidPrivateKey = normalizeVapidValue(process.env.VAPID_PRIVATE_KEY, "Private Key");
 const vapidSubject = process.env.VAPID_SUBJECT || "mailto:eduardo.puello@esfim.edu.co";
 let isConfigured = false;
 
