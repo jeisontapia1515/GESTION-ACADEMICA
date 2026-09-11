@@ -1179,16 +1179,17 @@ class AppStore {
 
   normalizeNotificationTargets(assignedTo) {
     const assignees = Array.isArray(assignedTo) ? assignedTo : [assignedTo];
-    return assignees
-      .map(assignee => {
+    return assignees.flatMap(assignee => {
         if (!assignee) return null;
         if (typeof assignee === 'object') {
-          return assignee.id || assignee._id || assignee.email || null;
+          return [assignee.id, assignee._id, assignee.email].filter(Boolean);
         }
-        return assignee;
+        return [assignee];
       })
       .filter(Boolean)
-      .map(value => String(value));
+      .flat()
+      .map(value => String(value))
+      .filter((value, index, values) => values.indexOf(value) === index);
   }
 
   // Report Issue by Employee

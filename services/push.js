@@ -43,14 +43,15 @@ function getTargetUserFilter(notification) {
     ...(Array.isArray(notification.targetUserIds) ? notification.targetUserIds : [])
   ];
   const targetIds = rawTargets
-    .map(value => {
+    .flatMap(value => {
       if (!value) return null;
       if (typeof value === "object") {
-        return value.id || value._id || value.email || null;
+        return [value.id, value._id, value.email].filter(Boolean);
       }
-      return value;
+      return [value];
     })
     .filter(Boolean)
+    .flat()
     .map(value => String(value).trim());
   const targetRole = String(notification.targetRole || "").toLowerCase().trim();
   const normalizedIds = targetIds.map(value => value.toLowerCase());
