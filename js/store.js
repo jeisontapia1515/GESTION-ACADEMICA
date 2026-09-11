@@ -1137,7 +1137,7 @@ class AppStore {
 
     // Si es recordatorio emitido por la Jefatura
     if (type === 'reminder') {
-      const targetUserIds = Array.isArray(task.assignedTo) ? task.assignedTo : [task.assignedTo].filter(Boolean);
+      const targetUserIds = this.normalizeNotificationTargets(task.assignedTo);
       targetUserIds.forEach(uId => {
         this.addNotification({
           targetUserId: uId,
@@ -1160,8 +1160,12 @@ class AppStore {
     } else if (type === 'general' && commentText) {
       // Notificar a la contraparte
       const isAdmin = currentUser && currentUser.role === 'admin';
+      const targetUserIds = isAdmin
+        ? this.normalizeNotificationTargets(task.assignedTo)
+        : [];
       this.addNotification({
-        targetUserId: isAdmin ? (task.assignedTo || 'all') : 'admin',
+        targetUserId: isAdmin ? (targetUserIds[0] || 'all') : 'admin',
+        targetUserIds: isAdmin ? targetUserIds : [],
         targetRole: isAdmin ? 'employee' : 'admin',
         title: `💬 Observación en "${task.title}"`,
         message: `${currentUser ? currentUser.name : 'Usuario'}: "${commentText.substring(0, 100)}"`,
@@ -1171,6 +1175,20 @@ class AppStore {
     }
 
     return newComment;
+  }
+
+  normalizeNotificationTargets(assignedTo) {
+    const assignees = Array.isArray(assignedTo) ? assignedTo : [assignedTo];
+    return assignees
+      .map(assignee => {
+        if (!assignee) return null;
+        if (typeof assignee === 'object') {
+          return assignee.id || assignee._id || assignee.email || null;
+        }
+        return assignee;
+      })
+      .filter(Boolean)
+      .map(value => String(value));
   }
 
   // Report Issue by Employee

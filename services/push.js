@@ -36,10 +36,22 @@ function getPushConfig() {
 }
 
 function getTargetUserFilter(notification) {
-  const targetIds = [
-    notification.targetUserId,
+  const rawTargets = [
+    ...(Array.isArray(notification.targetUserId)
+      ? notification.targetUserId
+      : [notification.targetUserId]),
     ...(Array.isArray(notification.targetUserIds) ? notification.targetUserIds : [])
-  ].filter(Boolean).map(value => String(value).trim());
+  ];
+  const targetIds = rawTargets
+    .map(value => {
+      if (!value) return null;
+      if (typeof value === "object") {
+        return value.id || value._id || value.email || null;
+      }
+      return value;
+    })
+    .filter(Boolean)
+    .map(value => String(value).trim());
   const targetRole = String(notification.targetRole || "").toLowerCase().trim();
   const normalizedIds = targetIds.map(value => value.toLowerCase());
   const hasSpecificTarget = normalizedIds.some(
