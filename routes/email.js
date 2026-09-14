@@ -1,5 +1,6 @@
 const express = require("express");
 const { protect } = require("../middleware/auth");
+const EmailConfig = require("../models/EmailConfig");
 const router = express.Router();
 let nodemailer = null;
 try { nodemailer = require("nodemailer"); } catch(e) {}
@@ -64,7 +65,16 @@ function normalizeConfig(raw) {
   };
 }
 
-function loadConfig() {
+async function loadConfig() {
+  try {
+    const stored = await EmailConfig.findOne({ key: "institutional" }).lean();
+    if (stored) {
+      return normalizeConfig(stored);
+    }
+  } catch (e) {
+    console.error("Error leyendo configuración SMTP desde MongoDB:", e.message);
+  }
+
   try {
     if (fs.existsSync(CONFIG_FILE)) {
       return normalizeConfig(JSON.parse(fs.readFileSync(CONFIG_FILE, "utf8")));
@@ -73,12 +83,17 @@ function loadConfig() {
   return normalizeConfig({});
 }
 
-function saveConfig(c) {
+async function saveConfig(c) {
   try {
     fs.writeFileSync(CONFIG_FILE, JSON.stringify(c, null, 2));
     cachedTransporters = {};
     cachedSignatures = {};
   } catch(err) {}
+  await EmailConfig.findOneAndUpdate(
+    { key: "institutional" },
+    { ...c, key: "institutional", updatedAt: new Date() },
+    { upsert: true, new: true, setDefaultsOnInsert: true }
+  );
 }
 
 let cachedTransporters = {};
@@ -156,11 +171,11 @@ function sanitizeAppUrl(content, req, cfg) {
   return content;
 }
 
-router.get("/email-config", protect, (req, res) => {
+router.get("/email-config", protect, async (req, res) => {
   if (req.user.role !== 'admin') {
     return res.status(403).json({ success: false, message: "Acceso restringido al Decano y Gestor." });
   }
-  const cfg = loadConfig();
+  const cfg = await loadConfig();
   const decanoConfigured = Boolean(cfg.decano.host && cfg.decano.user && cfg.decano.pass);
   const gestorConfigured = Boolean(cfg.gestor.host && cfg.gestor.user && cfg.gestor.pass);
 
@@ -183,11 +198,11 @@ router.get("/email-config", protect, (req, res) => {
   });
 });
 
-router.post("/email-config", protect, (req, res) => {
+router.post("/email-config", protect, async (req, res) => {
   if (req.user.role !== 'admin') {
     return res.status(403).json({ success: false, message: "Acceso restringido al Decano y Gestor." });
   }
-  const existing = loadConfig();
+  const existing = await loadConfig();
   const body = req.body || {};
 
   let updatedDecano = { ...existing.decano };
@@ -212,7 +227,7 @@ router.post("/email-config", protect, (req, res) => {
     gestor: updatedGestor
   };
 
-  saveConfig(finalConfig);
+  await saveConfig(finalConfig);
   res.json({ success: true, message: "Configuraciones SMTP de Decano y Gestor guardadas exitosamente." });
 });
 
@@ -233,7 +248,7 @@ router.post("/test-email", protect, async (req, res) => {
     return res.status(403).json({ success: false, message: "Acceso restringido al Decano y Gestor." });
   }
   const { to, account } = req.body;
-  const cfg = loadConfig();
+  const cfg = await loadConfig();
   if (!to) return res.status(400).json({ success: false, message: "Destinatario requerido." });
 
   const resolved = resolveAccount(cfg, account || "decano", req.user);
@@ -296,7 +311,7 @@ router.post("/test-email", protect, async (req, res) => {
 
 router.post("/send-email", protect, async (req, res) => {
   const { to, toName, subject, html, text, type, metadata, senderAccount } = req.body;
-  const cfg = loadConfig();
+  const cfg = await loadConfig();
 
   const resolved = resolveAccount(cfg, senderAccount, req.user);
   const targetCfg = resolved.cfg;
@@ -394,7 +409,7 @@ router.post("/send-email-batch", protect, async (req, res) => {
     return res.status(400).json({ success: false, message: "Lista de destinatarios requerida." });
   }
 
-  const cfg = loadConfig();
+  const cfg = await loadConfig();
   const resolved = resolveAccount(cfg, senderAccount, req.user);
   const targetCfg = resolved.cfg;
 
