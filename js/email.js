@@ -384,6 +384,71 @@ const EmailModule = {
   // AUTOMATED NOTIFICATION DISPATCHERS
   // =========================================================================
 
+  async notifyTaskSubmitted(task, sender) {
+    if (!task || !sender || !sender.name) return null;
+
+    const admins = (window.appStore && window.appStore.getUsers)
+      ? window.appStore.getUsers().filter(user => user.role === 'admin' && user.email)
+      : [];
+    if (admins.length === 0) return null;
+
+    const appUrl = this.getAppUrl();
+    const subject = `📤 [ESFIM Entrega para Aprobación] ${task.title}`;
+    const text = `${sender.name} entregó al 100% la actividad "${task.title}" y está pendiente de aprobación de la Decanatura.\n\nAcceso: ${appUrl}`;
+    const html = `
+      <div style="font-family:Arial,sans-serif; color:#1e293b;">
+        <h2>Actividad entregada para aprobación</h2>
+        <p><strong>${sender.name}</strong> reportó el cumplimiento del 100% de:</p>
+        <p><strong>${task.title}</strong></p>
+        <p>La actividad quedó pendiente de validación por la Decanatura.</p>
+        <p><a href="${appUrl}">Abrir plataforma ESFIM</a></p>
+      </div>
+    `;
+
+    return this.sendNotificationBatch(admins, subject, html, text, 'task_submitted', task.id);
+  },
+
+  async notifyTaskApproved(task, docentes) {
+    if (!task || !Array.isArray(docentes) || docentes.length === 0) return [];
+
+    const appUrl = this.getAppUrl();
+    const subject = `✅ [ESFIM Actividad Aprobada] ${task.title}`;
+    const text = `La Decanatura aprobó la actividad "${task.title}".\n\nAcceso: ${appUrl}`;
+    const html = `
+      <div style="font-family:Arial,sans-serif; color:#1e293b;">
+        <h2>Actividad aprobada por la Decanatura</h2>
+        <p>La actividad <strong>${task.title}</strong> fue revisada y aprobada como culminada.</p>
+        <p><a href="${appUrl}">Abrir plataforma ESFIM</a></p>
+      </div>
+    `;
+
+    return this.sendNotificationBatch(docentes.filter(doc => doc && doc.email), subject, html, text, 'task_approved', task.id);
+  },
+
+  async sendNotificationBatch(recipients, subject, html, text, type, taskId) {
+    if (!recipients || recipients.length === 0) return [];
+    const response = await fetch('/api/send-email-batch', {
+      method: 'POST',
+      headers: this.getHeaders(),
+      body: JSON.stringify({
+        recipients: recipients.map(recipient => ({
+          to: recipient.email,
+          toName: recipient.name || recipient.email,
+          subject,
+          html,
+          text
+        })),
+        type,
+        metadata: { taskId }
+      })
+    });
+    const data = await response.json();
+    if (!response.ok || !data.success) {
+      throw new Error(data.message || 'No se pudo despachar la notificación por correo.');
+    }
+    return data.results || [];
+  },
+
   // Construye el HTML y texto formal del correo para asignación de tareas
   buildTaskEmailContent(task, docente) {
     const appUrl = this.getAppUrl();

@@ -711,6 +711,16 @@ const App = {
           btnApprove.innerHTML = '✅ Validar y Marcar Aprobada';
           btnApprove.onclick = () => {
             window.appStore.updateTask(task.id, { status: 'completado', progress: 100 });
+            const approvedDocentes = task.assignedTo === 'all'
+              ? window.appStore.getEmployees()
+              : (Array.isArray(task.assignedTo)
+                ? task.assignedTo.map(id => typeof id === 'object' ? id : window.appStore.getUserById(id)).filter(Boolean)
+                : [window.appStore.getUserById(task.assignedTo)].filter(Boolean));
+            if (window.EmailModule) {
+              EmailModule.notifyTaskApproved(task, approvedDocentes).catch(error => {
+                console.error('No se pudo enviar la aprobación por correo:', error);
+              });
+            }
             AlertsEngine.showToast('Compromiso Aprobado', 'La tarea académica ha sido validada como completada por la Decanatura.', 'success');
             document.getElementById('taskDetailModal').classList.remove('active');
             AdminModule.render();
@@ -753,6 +763,11 @@ const App = {
         btnMarkDone.onclick = () => {
           window.appStore.updateTask(task.id, { status: 'revision_pendiente', progress: 100 });
           window.appStore.addComment(task.id, 'He finalizado los entregables y productos académicos para aprobación de la Decanatura.', 'general');
+          if (window.EmailModule) {
+            EmailModule.notifyTaskSubmitted(task, currentUser).catch(error => {
+              console.error('No se pudo enviar la entrega por correo:', error);
+            });
+          }
           AlertsEngine.showToast('Tarea Enviada', 'La actividad quedó pendiente de aprobación por el Decano.', 'success');
           App.openTaskDetailModal(task.id);
           EmployeeModule.render();
