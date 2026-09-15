@@ -905,7 +905,7 @@ class AppStore {
       const updates = {
         assigneeProgress: task.assigneeProgress,
         progress: avg,
-        status: allCompleted ? 'completado' : (avg > 0 ? 'en_progreso' : 'pendiente')
+        status: allCompleted ? 'revision_pendiente' : (avg > 0 ? 'en_progreso' : 'pendiente')
       };
 
       if (allCompleted) updates.completedAt = new Date().toISOString();
@@ -941,7 +941,7 @@ class AppStore {
         progress: progress
       };
       if (progress === 100) {
-        updates.status = 'completado';
+        updates.status = 'revision_pendiente';
         updates.completedAt = new Date().toISOString();
       } else if (progress > 0 && task.status === 'pendiente') {
         updates.status = 'en_progreso';
@@ -1058,7 +1058,7 @@ class AppStore {
       // Single task or admin setting progress
       updates.progress = newProgress;
       if (newProgress === 100) {
-        updates.status = 'completado';
+        updates.status = 'revision_pendiente';
         updates.completedAt = new Date().toISOString();
       } else if (newProgress > 0 && task.status === 'pendiente') {
         updates.status = 'en_progreso';

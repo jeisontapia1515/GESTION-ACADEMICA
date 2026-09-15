@@ -57,7 +57,7 @@ const AlertsEngine = {
 
   // Calculate detailed date alert status
   getTaskAlertStatus(task) {
-    if (task.status === 'completed') {
+    if (task.status === 'completed' || task.status === 'completado') {
       return {
         level: 'completed',
         label: 'Completada',
@@ -177,9 +177,9 @@ const AlertsEngine = {
 
     container.innerHTML = '';
 
-    const overdueTasks = tasks.filter(t => t.status !== 'completed' && this.getTaskAlertStatus(t).level === 'danger');
-    const dueTodayTasks = tasks.filter(t => t.status !== 'completed' && this.getTaskAlertStatus(t).level === 'warning');
-    const issueTasks = tasks.filter(t => t.issueReport && t.issueReport.status === 'pending_review');
+    const overdueTasks = tasks.filter(t => t.status !== 'completed' && t.status !== 'completado' && this.getTaskAlertStatus(t).level === 'danger');
+    const dueTodayTasks = tasks.filter(t => t.status !== 'completed' && t.status !== 'completado' && this.getTaskAlertStatus(t).level === 'warning');
+    const issueTasks = tasks.filter(t => t.issueReport && (t.issueReport.status === 'pending_review' || t.issueReport.status === 'revision_pendiente'));
 
     // Overdue Alert Banner
     if (overdueTasks.length > 0) {

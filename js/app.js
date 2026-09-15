@@ -751,9 +751,9 @@ const App = {
         btnMarkDone.className = 'btn btn-primary btn-sm';
         btnMarkDone.innerHTML = '📤 Entregar Compromiso a Decanatura';
         btnMarkDone.onclick = () => {
-          window.appStore.updateTask(task.id, { status: 'completado', progress: 100 });
-          window.appStore.addComment(task.id, 'He finalizado los entregables y productos académicos para revisión de la Decanatura.', 'general');
-          AlertsEngine.showToast('Tarea Entregada', 'Has marcado la tarea como cumplida para revisión del Decano.', 'success');
+          window.appStore.updateTask(task.id, { status: 'revision_pendiente', progress: 100 });
+          window.appStore.addComment(task.id, 'He finalizado los entregables y productos académicos para aprobación de la Decanatura.', 'general');
+          AlertsEngine.showToast('Tarea Enviada', 'La actividad quedó pendiente de aprobación por el Decano.', 'success');
           App.openTaskDetailModal(task.id);
           EmployeeModule.render();
         };
