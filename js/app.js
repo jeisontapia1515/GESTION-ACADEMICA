@@ -604,6 +604,11 @@ const App = {
     const userProgressObj = isGroup && !isAdmin ? window.appStore.getUserTaskProgress(task, currentUser) : null;
     const activeChecklist = userProgressObj ? (userProgressObj.checklist || []) : (task.checklist || []);
     const activeProgressVal = userProgressObj ? (userProgressObj.progress || 0) : (task.progress || 0);
+    const employeeHasCompleted = isEmployeeAssigned && (
+      activeProgressVal === 100 ||
+      (userProgressObj && userProgressObj.status === 'completado') ||
+      (!isGroup && task.status === 'completado')
+    );
     const canToggle = isEmployeeAssigned || isAdmin;
 
     // Render Checklist
@@ -707,7 +712,7 @@ const App = {
           btnApprove.onclick = () => {
             window.appStore.updateTask(task.id, { status: 'completado', progress: 100 });
             AlertsEngine.showToast('Compromiso Aprobado', 'La tarea académica ha sido validada como completada por la Decanatura.', 'success');
-            App.openTaskDetailModal(task.id);
+            document.getElementById('taskDetailModal').classList.remove('active');
             AdminModule.render();
           };
           actionsFooter.appendChild(btnApprove);
@@ -741,7 +746,7 @@ const App = {
       };
       actionsFooter.appendChild(btnReport);
 
-      if (task.status !== 'completado') {
+      if (!employeeHasCompleted) {
         const btnMarkDone = document.createElement('button');
         btnMarkDone.className = 'btn btn-primary btn-sm';
         btnMarkDone.innerHTML = '📤 Entregar Compromiso a Decanatura';
@@ -754,16 +759,14 @@ const App = {
         };
         actionsFooter.appendChild(btnMarkDone);
       } else {
-        const btnHide = document.createElement('button');
-        btnHide.className = 'btn btn-secondary btn-sm';
-        btnHide.innerHTML = '📦 Archivar / Ocultar de mi Tablero';
-        btnHide.onclick = async () => {
-          await window.appStore.archiveTask(task.id);
-          AlertsEngine.showToast('Tarea Archivada', 'Has archivado este compromiso cumplido.', 'info');
-          document.getElementById('taskDetailModal').classList.remove('active');
-          EmployeeModule.render();
-        };
-        actionsFooter.appendChild(btnHide);
+        const btnCompleted = document.createElement('button');
+        btnCompleted.className = 'btn btn-success btn-sm';
+        btnCompleted.innerHTML = isGroup && !isAdmin
+          ? '✅ Entregable Cumplido (100%)'
+          : '✅ Compromiso Cumplido';
+        btnCompleted.disabled = true;
+        btnCompleted.title = 'El entregable ya fue completado al 100%.';
+        actionsFooter.appendChild(btnCompleted);
       }
     }
 

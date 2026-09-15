@@ -247,6 +247,11 @@ const AdminModule = {
     // Filter by search, employee, area, status, alert
     let filtered = tasks.filter(t => {
       const alert = AlertsEngine.getTaskAlertStatus(t);
+      const showingCompleted = this.currentFilter === 'completado' || this.currentAlertFilter === 'completado';
+
+      // El tablero operativo solo muestra compromisos en ejecución. Las cumplidas
+      // siguen disponibles mediante el filtro explícito de cumplidas.
+      if (t.status === 'completado' && !showingCompleted) return false;
 
       // Search match
       const searchMatch = !this.currentSearch || 
