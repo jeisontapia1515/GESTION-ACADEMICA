@@ -77,7 +77,7 @@ router.post("/", protect, async (req, res) => {
     message,
     type: type || "info",
     taskId: taskId || null,
-    targetUserId: targetUserId || "all",
+    targetUserId: targetUserId || (Array.isArray(targetUserIds) && targetUserIds.length ? null : "all"),
     targetUserIds: Array.isArray(targetUserIds) ? targetUserIds : [],
     targetRole: targetRole || null,
     metadata: metadata || {},

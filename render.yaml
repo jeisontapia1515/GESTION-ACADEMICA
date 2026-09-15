@@ -1,0 +1,16 @@
+services:
+  - type: cron
+    name: gestion-academica-deadline-reminders
+    runtime: node
+    schedule: "*/15 * * * *"
+    buildCommand: npm install --omit=dev
+    startCommand: npm run reminders:run
+    envVars:
+      - key: MONGODB_URI
+        sync: false
+      - key: VAPID_SUBJECT
+        sync: false
+      - key: VAPID_PUBLIC_KEY
+        sync: false
+      - key: VAPID_PRIVATE_KEY
+        sync: false

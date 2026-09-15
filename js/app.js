@@ -1165,21 +1165,39 @@ const App = {
       return;
     }
 
+    // La solicitud de permiso requiere una acción explícita del usuario.
+    if (Notification.permission !== 'granted') return;
+    await this.activatePushNotifications(false);
+  },
+
+  async activatePushNotifications(showFeedback = true) {
+    if (!('serviceWorker' in navigator) || !('PushManager' in window) ||
+        !('Notification' in window) || !window.appStore.getToken()) {
+      if (showFeedback) AlertsEngine.showToast('Notificaciones no disponibles', 'Este navegador no permite notificaciones push.', 'warning');
+      return false;
+    }
+
     try {
       const configResponse = await fetch('/api/push/config', {
         headers: { 'Authorization': `Bearer ${window.appStore.getToken()}` }
       });
       const config = await configResponse.json();
-      if (!config.success || !config.enabled || !config.publicKey) return;
+      if (!config.success || !config.enabled || !config.publicKey) {
+        if (showFeedback) AlertsEngine.showToast('Notificaciones no configuradas', 'El servidor aún no tiene configurado el canal de notificaciones.', 'warning');
+        return false;
+      }
 
       const registration = await this.serviceWorkerRegistration;
-      if (!registration) return;
+      if (!registration) return false;
 
       let permission = Notification.permission;
       if (permission === 'default') {
         permission = await Notification.requestPermission();
       }
-      if (permission !== 'granted') return;
+      if (permission !== 'granted') {
+        if (showFeedback) AlertsEngine.showToast('Permiso requerido', 'Permite las notificaciones en la configuración del navegador para recibir recordatorios.', 'warning');
+        return false;
+      }
 
       let subscription = await registration.pushManager.getSubscription();
       if (!subscription) {
@@ -1197,8 +1215,22 @@ const App = {
         },
         body: JSON.stringify(subscription)
       });
+      const button = document.getElementById('btnEnableNotifications');
+      const topButton = document.getElementById('btnEnableNotificationsTop');
+      const status = document.getElementById('notificationsStatusText');
+      if (button) button.classList.add('notifications-enabled');
+      if (topButton) {
+        topButton.classList.add('notifications-enabled');
+        topButton.textContent = '✅ Notificaciones activadas';
+        topButton.title = 'Las notificaciones están activadas en este dispositivo';
+      }
+      if (status) status.textContent = 'Notificaciones activadas en este dispositivo';
+      if (showFeedback) AlertsEngine.showToast('Notificaciones activadas', 'Recibirás avisos y recordatorios de tus compromisos.', 'success');
+      return true;
     } catch (error) {
       console.warn('No se pudo activar el canal de notificaciones push:', error);
+      if (showFeedback) AlertsEngine.showToast('No se pudieron activar', 'Intenta nuevamente después de verificar los permisos del navegador.', 'danger');
+      return false;
     }
   },
 

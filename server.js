@@ -63,6 +63,13 @@ function startServer() {
   app.listen(PORT, () => {
     console.log("Servidor EFIM en http://localhost:" + PORT);
   });
+
+  const { sendDueDateReminders } = require("./services/deadlineReminders");
+  const checkReminders = () => sendDueDateReminders()
+    .then(count => { if (count) console.log(`Recordatorios de vencimiento enviados: ${count}`); })
+    .catch(error => console.error("Error generando recordatorios de vencimiento:", error.message));
+  checkReminders();
+  setInterval(checkReminders, 15 * 60 * 1000);
 }
 
 async function seedInitialData() {

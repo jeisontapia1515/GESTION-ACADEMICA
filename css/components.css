@@ -1649,3 +1649,24 @@ textarea.form-control {
 
 
 
+.notifications-enable-top {
+  white-space: nowrap;
+  font-size: 0.78rem;
+  padding: 0.45rem 0.7rem;
+}
+
+.notifications-enable-top.notifications-enabled {
+  color: var(--success, #059669);
+  border-color: var(--success, #059669);
+}
+
+@media (max-width: 900px) {
+  .notifications-enable-top {
+    font-size: 0;
+    padding: 0.5rem;
+  }
+
+  .notifications-enable-top::first-letter {
+    font-size: 1rem;
+  }
+}

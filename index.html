@@ -100,6 +100,11 @@
         </div>
       </div>
 
+      <button id="btnEnableNotificationsTop" class="btn btn-secondary notifications-enable-top"
+              onclick="App.activatePushNotifications()" title="Activar recordatorios y notificaciones en este dispositivo">
+        🔔 Activar notificaciones
+      </button>
+
       <!-- Theme Switcher (Único botón de control en barra) -->
       <button id="themeToggleBtn" class="btn-icon btn-theme" onclick="App.toggleTheme()" title="Cambiar Tema (Oscuro / Claro)">
         🌙 <span class="btn-label-sm">Tema</span>
@@ -157,6 +162,14 @@
               <div class="dropdown-item-content">
                 <strong>Descargar Aplicativo</strong>
                 <span id="dropdownPwaText">Instalar en la pantalla de inicio</span>
+              </div>
+            </button>
+
+            <button class="dropdown-item" id="btnEnableNotifications" onclick="App.activatePushNotifications(); App.closeUserDropdown();" title="Activar recordatorios y notificaciones en este dispositivo">
+              <span class="dropdown-item-icon">🔔</span>
+              <div class="dropdown-item-content">
+                <strong>Activar Notificaciones</strong>
+                <span id="notificationsStatusText">Recibir recordatorios de compromisos</span>
               </div>
             </button>
           </div>
