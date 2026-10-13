@@ -256,10 +256,14 @@ const EmailModule = {
       resultBox.innerHTML = `<span>🔄 Conectando vía cuenta ${roleLabel} y transmitiendo correo a <strong>${target}</strong>...</span>`;
     }
 
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 45000);
+
     try {
       const res = await fetch('/api/test-email', {
         method: 'POST',
         headers: this.getHeaders(),
+        signal: controller.signal,
         body: JSON.stringify({ to: target, account: accountToTest })
       });
       const data = await res.json();
@@ -300,12 +304,17 @@ const EmailModule = {
         AlertsEngine.showToast('Fallo en Prueba SMTP', data.message || data.error, 'danger');
       }
     } catch (err) {
+      const errorMessage = err.name === 'AbortError'
+        ? 'El servidor tardó demasiado en responder. Revise la conexión SMTP y vuelva a intentar.'
+        : err.message;
       if (resultBox) {
         resultBox.style.background = 'rgba(231, 76, 60, 0.15)';
-        resultBox.innerHTML = `<strong>❌ Error de Red:</strong> ${err.message}`;
+        resultBox.style.border = '1px solid #e74c3c';
+        resultBox.innerHTML = `<strong>❌ Error de Envío:</strong> ${errorMessage}`;
       }
-      AlertsEngine.showToast('Error', err.message, 'danger');
+      AlertsEngine.showToast('Error de Envío', errorMessage, 'danger');
     } finally {
+      clearTimeout(timeoutId);
       if (btn) {
         btn.disabled = false;
         btn.innerHTML = '✉️ Enviar Correo de Prueba';

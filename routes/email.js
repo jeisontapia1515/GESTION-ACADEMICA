@@ -111,6 +111,9 @@ function getTransporterForAccount(accountCfg) {
       user: accountCfg.user,
       pass: accountCfg.pass
     },
+    connectionTimeout: 10000,
+    greetingTimeout: 10000,
+    socketTimeout: 30000,
     tls: {
       rejectUnauthorized: false
     }
