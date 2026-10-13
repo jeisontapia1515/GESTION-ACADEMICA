@@ -349,7 +349,7 @@ const EmailModule = {
               <div style="display:flex; justify-content:space-between; align-items:center;">
                 <strong style="color:var(--text-main); font-size:0.95rem;">${em.subject}</strong>
                 <span class="badge ${em.status === 'sent_smtp' ? 'badge-success' : 'badge-warning'}" style="font-size:0.7rem;">
-                  ${em.status === 'sent_smtp' ? '🟢 Entregado SMTP' : '🟡 Buzón ESFIM'}
+                  ${em.status === 'sent_smtp' ? '🟢 Aceptado SMTP' : '🟡 Buzón ESFIM'}
                 </span>
               </div>
               <div style="font-size:0.82rem; color:var(--text-muted); display:flex; gap:1rem; flex-wrap:wrap;">
@@ -635,40 +635,43 @@ Favor acceder a la plataforma institucional en ${appUrl} para reportar su avance
       });
       const data = await res.json();
 
-      if (data.success) {
-        const sentCount = data.sentCount || 0;
-        if (sentCount > 0) {
-          AlertsEngine.showToast(
-            'Despacho de Correos Completado',
-            `📧 Se transmitieron exitosamente ${sentCount} de ${recipients.length} notificaciones vía SMTP a los docentes asignados (${namesOrEmails}).`,
-            'success',
-            8000
-          );
-        } else {
-          AlertsEngine.showToast(
-            'Notificaciones Registradas',
-            `Registradas para ${recipients.length} docentes en el buzón institucional ESFIM.`,
-            'info',
-            6000
-          );
-        }
-        return data.results || [];
+      if (!res.ok || !data.success) {
+        throw new Error(data.message || 'El servidor no pudo procesar el envío.');
       }
-    } catch (e) {
-      console.warn('Error en despacho por lote, reintentando secuencialmente:', e);
-    }
 
-    // Fallback secuencial si falla el lote
-    const results = [];
-    for (let i = 0; i < validDocentes.length; i++) {
-      const doc = validDocentes[i];
-      const r = await this.notifyTaskAssignment(task, doc, false);
-      results.push(r);
-      if (i < validDocentes.length - 1) {
-        await new Promise(resolve => setTimeout(resolve, 800));
+      const sentCount = data.sentCount || 0;
+      const results = data.results || [];
+      const failedRecipients = results.filter(result => !result.success);
+      if (failedRecipients.length === 0 && sentCount === recipients.length) {
+        AlertsEngine.showToast(
+          'Correos Aceptados por SMTP',
+          `SMTP aceptó ${sentCount} notificaciones para envío a los docentes asignados (${namesOrEmails}).`,
+          'success',
+          8000
+        );
+      } else {
+        const failedSummary = failedRecipients.slice(0, 3).map(result => {
+          const reason = String(result.error || 'Rechazado por SMTP').slice(0, 140);
+          return `${result.to}: ${reason}`;
+        }).join('; ');
+        AlertsEngine.showToast(
+          sentCount > 0 ? 'Envío Parcial' : 'Correos No Aceptados',
+          `${data.message || `SMTP aceptó ${sentCount} de ${recipients.length} correos.`}${failedSummary ? ` Fallos: ${failedSummary}` : ''}`,
+          'danger',
+          12000
+        );
       }
+      return results;
+    } catch (e) {
+      console.error('No se pudo confirmar el resultado del envío por lote:', e);
+      AlertsEngine.showToast(
+        'Resultado de Envío Desconocido',
+        `${e.message} No se reintentó el lote para evitar correos duplicados; revise la auditoría SMTP.`,
+        'danger',
+        12000
+      );
+      return [];
     }
-    return results;
   },
 
   // Dispatches email when Decano assigns a new academic task
@@ -693,11 +696,15 @@ Favor acceder a la plataforma institucional en ${appUrl} para reportar su avance
       });
 
       const data = await res.json();
+      if (!res.ok || !data.success) {
+        if (showToast) AlertsEngine.showToast('Correo No Enviado', data.message || data.warning || 'SMTP no aceptó el correo.', 'danger', 8000);
+        return data;
+      }
       if (showToast && data.success) {
         if (data.status === 'sent_smtp') {
           AlertsEngine.showToast(
-            'Notificación Despachada',
-            `📧 Correo entregado exitosamente a la bandeja de entrada de ${docente.email}`,
+            'Correo Aceptado por SMTP',
+            `📧 El servidor SMTP aceptó el correo para ${docente.email}.`,
             'success',
             6000
           );

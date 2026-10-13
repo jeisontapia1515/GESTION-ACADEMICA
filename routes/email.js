@@ -86,8 +86,7 @@ async function loadConfig() {
 async function saveConfig(c) {
   try {
     fs.writeFileSync(CONFIG_FILE, JSON.stringify(c, null, 2));
-    cachedTransporters = {};
-    cachedSignatures = {};
+    clearTransporterCache();
   } catch(err) {}
   await EmailConfig.findOneAndUpdate(
     { key: "institutional" },
@@ -99,11 +98,30 @@ async function saveConfig(c) {
 let cachedTransporters = {};
 let cachedSignatures = {};
 
+function clearTransporterCache() {
+  Object.values(cachedTransporters).forEach(transporter => transporter.close());
+  cachedTransporters = {};
+  cachedSignatures = {};
+}
+
 function getTransporterForAccount(accountCfg) {
   if (!nodemailer || !accountCfg || !accountCfg.host || !accountCfg.user || !accountCfg.pass) {
     return null;
   }
-  return nodemailer.createTransport({
+  const key = `${accountCfg.host}:${accountCfg.port}:${accountCfg.user}`.toLowerCase();
+  const signature = JSON.stringify({
+    host: accountCfg.host,
+    port: accountCfg.port,
+    secure: Boolean(accountCfg.secure),
+    user: accountCfg.user,
+    pass: accountCfg.pass
+  });
+  if (cachedTransporters[key] && cachedSignatures[key] === signature) {
+    return cachedTransporters[key];
+  }
+  if (cachedTransporters[key]) cachedTransporters[key].close();
+
+  const transporter = nodemailer.createTransport({
     host: accountCfg.host,
     port: parseInt(accountCfg.port) || 587,
     secure: Boolean(accountCfg.secure),
@@ -114,10 +132,58 @@ function getTransporterForAccount(accountCfg) {
     connectionTimeout: 10000,
     greetingTimeout: 10000,
     socketTimeout: 30000,
+    pool: true,
+    maxConnections: 1,
+    rateLimit: 1,
+    rateDelta: 1000,
     tls: {
       rejectUnauthorized: false
     }
   });
+  cachedTransporters[key] = transporter;
+  cachedSignatures[key] = signature;
+  return transporter;
+}
+
+function formatFrom(name, address) {
+  return `"${String(name || 'Decanatura ESFIM').replace(/"/g, '')}" <${String(address || '').trim()}>`;
+}
+
+function isSendAsDenied(error) {
+  return error.responseCode === 554 && /SendAsDenied|not allowed to send as/i.test(error.message || '');
+}
+
+function isTemporarySmtpLimit(error) {
+  return error.responseCode === 432 || /Concurrent connections limit exceeded/i.test(error.message || '');
+}
+
+async function sendMailWithRetry(transporter, mailOptions, accountCfg) {
+  let options = { ...mailOptions };
+  let usedAuthenticatedSender = false;
+  let attempts = 0;
+
+  while (attempts < 3) {
+    try {
+      const info = await transporter.sendMail(options);
+      return { info, from: options.from, usedAuthenticatedSender };
+    } catch (error) {
+      if (!usedAuthenticatedSender && isSendAsDenied(error) && accountCfg.user) {
+        options = {
+          ...options,
+          from: formatFrom(accountCfg.fromName, accountCfg.user),
+          replyTo: accountCfg.fromAddress && accountCfg.fromAddress !== accountCfg.user
+            ? formatFrom(accountCfg.fromName, accountCfg.fromAddress)
+            : options.replyTo
+        };
+        usedAuthenticatedSender = true;
+        continue;
+      }
+
+      attempts += 1;
+      if (!isTemporarySmtpLimit(error) || attempts >= 3) throw error;
+      await new Promise(resolve => setTimeout(resolve, attempts * 1500));
+    }
+  }
 }
 
 function resolveAccount(cfg, requestedAccount, user) {
@@ -269,9 +335,9 @@ router.post("/test-email", protect, async (req, res) => {
     if (!t) return res.status(400).json({ success: false, message: "No se pudo inicializar el transporte SMTP." });
 
     const roleLabel = resolved.key === 'decano' ? 'Decano de Investigación' : 'Gestor / Coordinador';
-    const fromStr = `"${targetCfg.fromName || roleLabel}" <${targetCfg.fromAddress || targetCfg.user}>`;
+    const fromStr = formatFrom(targetCfg.fromName || roleLabel, targetCfg.fromAddress || targetCfg.user);
 
-    const info = await t.sendMail({
+    const { info, from } = await sendMailWithRetry(t, {
       from: fromStr,
       to,
       subject: `[PRUEBA ${roleLabel.toUpperCase()}] Verificación SMTP ESFIM`,
@@ -288,7 +354,7 @@ router.post("/test-email", protect, async (req, res) => {
               <h3 style="color:#0a192f; margin-top:0; font-size:16px;">Verificación de Correo Institucional</h3>
               <p style="font-size:13.5px; line-height:1.5; color:#334155;">Este es un correo de prueba enviado exitosamente desde la cuenta oficial de <strong>${roleLabel}</strong> (<code>${targetCfg.user}</code>) para la <strong>Decanatura de Investigación - ESFIM</strong>.</p>
               <div style="background:#ecfdf5; border:1px solid #a7f3d0; border-radius:6px; padding:10px 14px; margin:14px 0; color:#065f46; font-size:13px; font-weight:600;">
-                ✅ Conexión SMTP autenticada y entrega confirmada a la bandeja de entrada.
+                ✅ Conexión SMTP autenticada y correo aceptado por el servidor.
               </div>
               <hr style="border:0; border-top:1px solid #e2e8f0; margin:18px 0;" />
               <small style="color:#64748b; font-size:11px;">Escuela de Formación de Infantería de Marina • Coveñas, Sucre — República de Colombia</small>
@@ -297,17 +363,48 @@ router.post("/test-email", protect, async (req, res) => {
         </div>
       `,
       attachments: getLogoAttachment()
+    }, targetCfg);
+
+    const emails = loadEmails();
+    emails.unshift({
+      id: "email-" + Date.now() + "-" + Math.random().toString(36).substring(2, 7),
+      to,
+      toName: to,
+      from,
+      fromName: targetCfg.fromName || roleLabel,
+      senderAccount: resolved.key,
+      subject: `[PRUEBA ${roleLabel.toUpperCase()}] Verificación SMTP ESFIM`,
+      type: "test_email",
+      createdAt: new Date().toISOString(),
+      status: "sent_smtp",
+      smtpMessage: `Aceptado por SMTP desde ${from} [${info.messageId}]`
     });
+    saveEmails(emails);
 
     res.json({
       success: true,
       senderAccount: resolved.key,
-      from: fromStr,
+      from,
       messageId: info.messageId,
-      message: `Correo de prueba entregado correctamente vía SMTP desde la cuenta de ${roleLabel} (${targetCfg.user}).`
+      message: `El servidor SMTP aceptó el correo de prueba desde la cuenta de ${roleLabel} (${targetCfg.user}).`
     });
   } catch (err) {
     console.error("Error en test-email:", err.message);
+    const emails = loadEmails();
+    emails.unshift({
+      id: "email-" + Date.now() + "-" + Math.random().toString(36).substring(2, 7),
+      to,
+      toName: to,
+      from: targetCfg.fromAddress || targetCfg.user,
+      fromName: targetCfg.fromName,
+      senderAccount: resolved.key,
+      subject: "[PRUEBA SMTP] Verificación SMTP ESFIM",
+      type: "test_email",
+      createdAt: new Date().toISOString(),
+      status: "simulated",
+      smtpMessage: `Fallo en prueba SMTP (${resolved.key}): ${err.message}`
+    });
+    saveEmails(emails);
     res.status(500).json({ success: false, message: `Fallo SMTP (${resolved.key}): ${err.message}` });
   }
 });
@@ -355,10 +452,10 @@ router.post("/send-email", protect, async (req, res) => {
   try {
     const t = getTransporterForAccount(targetCfg);
     if (t) {
-      const fromStr = `"${targetCfg.fromName}" <${targetCfg.fromAddress || targetCfg.user}>`;
-      const replyTo = `"${targetCfg.fromName}" <${targetCfg.fromAddress || targetCfg.user}>`;
+      const fromStr = formatFrom(targetCfg.fromName, targetCfg.fromAddress || targetCfg.user);
+      const replyTo = formatFrom(targetCfg.fromName, targetCfg.fromAddress || targetCfg.user);
 
-      const info = await t.sendMail({
+      const { info, from, usedAuthenticatedSender } = await sendMailWithRetry(t, {
         from: fromStr,
         replyTo: replyTo,
         to: toStr,
@@ -366,14 +463,16 @@ router.post("/send-email", protect, async (req, res) => {
         html: sanitizedHtml,
         text: sanitizedText,
         attachments: getLogoAttachment()
-      });
+      }, targetCfg);
       smtpSuccess = true;
       messageId = info.messageId;
+      emailRecord.from = usedAuthenticatedSender ? targetCfg.user : fromStr;
       emailRecord.status = "sent_smtp";
-      emailRecord.smtpMessage = `Entregado vía SMTP desde cuenta ${resolved.key === 'decano' ? 'Decano' : 'Gestor'} (${targetCfg.user}) [${info.messageId}]`;
+      emailRecord.smtpMessage = `Aceptado por SMTP desde ${from} [${info.messageId}]`;
     } else {
+      smtpError = `Servidor SMTP (${resolved.key}) no configurado.`;
       emailRecord.status = "simulated";
-      emailRecord.smtpMessage = `Servidor SMTP (${resolved.key}) no configurado (guardado en buzón virtual)`;
+      emailRecord.smtpMessage = `${smtpError} Registrado en buzón virtual.`;
     }
   } catch(e) {
     console.error("Error SMTP al enviar a", to, ":", e.message);
@@ -395,12 +494,12 @@ router.post("/send-email", protect, async (req, res) => {
       message: `Correo entregado exitosamente vía SMTP desde la cuenta de ${resolved.key === 'decano' ? 'Decano' : 'Gestor'}.`
     });
   } else {
-    res.json({
-      success: true,
+    res.status(502).json({
+      success: false,
       status: "simulated",
       senderAccount: resolved.key,
       warning: smtpError,
-      message: smtpError ? `Fallo SMTP (${smtpError}), registrado en buzón virtual.` : "Registrado en simulador."
+      message: smtpError ? `Fallo SMTP (${smtpError}), registrado solo en buzón virtual.` : "El correo quedó solo en el simulador y no se envió por SMTP."
     });
   }
 });
@@ -424,7 +523,10 @@ router.post("/send-email-batch", protect, async (req, res) => {
     const item = recipients[i];
     const to = typeof item === 'string' ? item : item.to || item.email;
     const toName = typeof item === 'object' ? (item.toName || item.name || to) : to;
-    if (!to || !to.includes('@')) continue;
+    if (!to || !to.includes('@')) {
+      results.push({ to, toName, success: false, error: "Destinatario inválido." });
+      continue;
+    }
 
     const rawHtml = (typeof item === 'object' && item.html) || html;
     const rawText = (typeof item === 'object' && item.text) || text;
@@ -452,9 +554,9 @@ router.post("/send-email-batch", protect, async (req, res) => {
 
     if (t) {
       try {
-        const fromStr = `"${targetCfg.fromName}" <${targetCfg.fromAddress || targetCfg.user}>`;
+        const fromStr = formatFrom(targetCfg.fromName, targetCfg.fromAddress || targetCfg.user);
         const toStr = toName ? `"${String(toName).replace(/"/g, "")}" <${to.trim()}>` : to.trim();
-        const info = await t.sendMail({
+        const { info, from, usedAuthenticatedSender } = await sendMailWithRetry(t, {
           from: fromStr,
           replyTo: fromStr,
           to: toStr,
@@ -462,10 +564,11 @@ router.post("/send-email-batch", protect, async (req, res) => {
           html: emailRecord.html,
           text: emailRecord.text,
           attachments: getLogoAttachment()
-        });
+        }, targetCfg);
         smtpSuccess = true;
+        emailRecord.from = usedAuthenticatedSender ? targetCfg.user : fromStr;
         emailRecord.status = "sent_smtp";
-        emailRecord.smtpMessage = `Entregado vía SMTP desde cuenta ${resolved.key === 'decano' ? 'Decano' : 'Gestor'} (${targetCfg.user}) [${info.messageId}]`;
+        emailRecord.smtpMessage = `Aceptado por SMTP desde ${from} [${info.messageId}]`;
       } catch (e) {
         console.error(`Error SMTP enviando a ${to}:`, e.message);
         smtpError = e.message;
@@ -473,8 +576,9 @@ router.post("/send-email-batch", protect, async (req, res) => {
         emailRecord.smtpMessage = `Fallo de envío SMTP (${resolved.key}): ${e.message} (Disponible en buzón virtual EFIM)`;
       }
     } else {
+      smtpError = `Servidor SMTP (${resolved.key}) no configurado.`;
       emailRecord.status = "simulated";
-      emailRecord.smtpMessage = `Servidor SMTP (${resolved.key}) no configurado (guardado en buzón virtual)`;
+      emailRecord.smtpMessage = `${smtpError} Registrado en buzón virtual.`;
     }
 
     emails.unshift(emailRecord);
@@ -489,15 +593,17 @@ router.post("/send-email-batch", protect, async (req, res) => {
   saveEmails(emails);
 
   const sentCount = results.filter(r => r.success).length;
+  const failedCount = results.length - sentCount;
   res.json({
     success: true,
     senderAccount: resolved.key,
     sentCount,
+    failedCount,
     totalCount: results.length,
     results,
-    message: sentCount > 0
-      ? `Se transmitieron exitosamente ${sentCount} de ${results.length} correos vía SMTP desde la cuenta de ${resolved.key === 'decano' ? 'Decano' : 'Gestor'}.`
-      : `Correos registrados en el buzón institucional (${results.length} destinatarios).`
+    message: failedCount === 0
+      ? `SMTP aceptó los ${sentCount} correos para envío.`
+      : `SMTP aceptó ${sentCount} de ${results.length} correos; ${failedCount} fallaron o quedaron solo registrados en el buzón virtual.`
   });
 });
 
