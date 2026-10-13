@@ -964,15 +964,16 @@ const AdminModule = {
         u = window.appStore.getUserById(cb.dataset.email);
       }
       const uId = (u && (u.id || u._id)) || cb.value;
-      const uEmail = (u && u.email) || cb.dataset.email;
+      const rawEmail = (u && u.email) || cb.dataset.email || (String(cb.value).includes('@') ? cb.value : '');
+      const uEmail = String(rawEmail || '').trim().toLowerCase();
       const uName = (u && u.name) || cb.dataset.name || 'Docente Investigador';
       
-      targetDocentes.push({
-        id: uId,
-        name: uName,
-        email: uEmail
-      });
       if (!assignedIds.includes(uId)) {
+        targetDocentes.push({
+          id: uId,
+          name: uName,
+          email: uEmail
+        });
         assignedIds.push(uId);
       }
     });
@@ -980,11 +981,11 @@ const AdminModule = {
     // Custom emails
     const customEmails = (customEmailsInput ? customEmailsInput.value : '')
       .split(/[\s,;]+/)
-      .map(e => e.trim())
-      .filter(e => e.includes('@'));
+      .map(e => e.trim().toLowerCase())
+      .filter(e => e && e.includes('@'));
 
     customEmails.forEach(emailVal => {
-      let existingUser = window.appStore.getUsers().find(u => u.email && u.email.toLowerCase() === emailVal.toLowerCase());
+      let existingUser = window.appStore.getUsers().find(u => u.email && u.email.toLowerCase() === emailVal);
       if (!existingUser) {
         const cleanName = emailVal.split('@')[0].split('.').map(p => p.charAt(0).toUpperCase() + p.slice(1)).join(' ');
         existingUser = window.appStore.createEmployee({
@@ -998,11 +999,11 @@ const AdminModule = {
         }
       }
       const uId = existingUser.id || existingUser._id || emailVal;
-      if (!assignedIds.includes(uId)) {
+      if (!assignedIds.includes(uId) && !targetDocentes.some(d => d.email === emailVal)) {
         targetDocentes.push({
           id: uId,
           name: existingUser.name,
-          email: existingUser.email
+          email: existingUser.email || emailVal
         });
         assignedIds.push(uId);
       }
@@ -1193,20 +1194,27 @@ const AdminModule = {
     checkboxes.forEach(cb => {
       let u = window.appStore.getUserById(cb.value);
       if (!u && cb.dataset.email) u = window.appStore.getUserById(cb.dataset.email);
-      targetDocentes.push({
-        id: (u && (u.id || u._id)) || cb.value,
-        name: (u && u.name) || cb.dataset.name || 'Docente Investigador',
-        email: (u && u.email) || cb.dataset.email
-      });
+      const uId = (u && (u.id || u._id)) || cb.value;
+      const rawEmail = (u && u.email) || cb.dataset.email || (String(cb.value).includes('@') ? cb.value : '');
+      const uEmail = String(rawEmail || '').trim().toLowerCase();
+      const uName = (u && u.name) || cb.dataset.name || 'Docente Investigador';
+
+      if (!targetDocentes.some(d => d.id === uId)) {
+        targetDocentes.push({
+          id: uId,
+          name: uName,
+          email: uEmail
+        });
+      }
     });
 
     const customEmails = (customEmailsInput ? customEmailsInput.value : '')
       .split(/[\s,;]+/)
-      .map(e => e.trim())
-      .filter(e => e.includes('@'));
+      .map(e => e.trim().toLowerCase())
+      .filter(e => e && e.includes('@'));
 
     customEmails.forEach(emailVal => {
-      let existingUser = window.appStore.getUsers().find(u => u.email && u.email.toLowerCase() === emailVal.toLowerCase());
+      let existingUser = window.appStore.getUsers().find(u => u.email && u.email.toLowerCase() === emailVal);
       if (!existingUser) {
         const cleanName = emailVal.split('@')[0].split('.').map(p => p.charAt(0).toUpperCase() + p.slice(1)).join(' ');
         existingUser = window.appStore.createEmployee({
@@ -1216,8 +1224,8 @@ const AdminModule = {
         });
       }
       const uId = existingUser.id || existingUser._id || emailVal;
-      if (!targetDocentes.some(d => d.id === uId)) {
-        targetDocentes.push({ id: uId, name: existingUser.name, email: existingUser.email });
+      if (!targetDocentes.some(d => d.id === uId || d.email === emailVal)) {
+        targetDocentes.push({ id: uId, name: existingUser.name, email: existingUser.email || emailVal });
       }
     });
 

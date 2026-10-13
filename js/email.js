@@ -11,7 +11,9 @@ const EmailModule = {
   },
 
   getHeaders() {
-    const token = (window.appStore && window.appStore.getToken) ? window.appStore.getToken() : (sessionStorage.getItem('ESFIM_token') || localStorage.getItem('ESFIM_token'));
+    const token = (window.appStore && window.appStore.getToken) 
+      ? window.appStore.getToken() 
+      : (sessionStorage.getItem('efim_token') || localStorage.getItem('efim_token') || sessionStorage.getItem('ESFIM_token') || localStorage.getItem('ESFIM_token'));
     const headers = { 'Content-Type': 'application/json' };
     if (token) headers['Authorization'] = `Bearer ${token}`;
     return headers;
@@ -463,14 +465,24 @@ const EmailModule = {
     const appUrl = this.getAppUrl();
     const areaObj = window.DECANATURA_AREAS && task.area ? window.DECANATURA_AREAS[task.area] : null;
     const areaName = areaObj ? areaObj.name : 'Investigación ESFIM';
-    const dueDateFormatted = new Date(task.dueDate).toLocaleString('es-CO', {
-      weekday: 'long',
-      year: 'numeric',
-      month: 'long',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit'
-    });
+    let dueDateFormatted = 'Sin definir';
+    try {
+      if (task.dueDate) {
+        dueDateFormatted = new Date(task.dueDate).toLocaleString('es-CO', {
+          weekday: 'long',
+          year: 'numeric',
+          month: 'long',
+          day: 'numeric',
+          hour: '2-digit',
+          minute: '2-digit'
+        });
+      }
+    } catch (e) {
+      dueDateFormatted = String(task.dueDate || 'Sin definir');
+    }
+
+    const docName = (docente && (docente.name || docente.email)) || 'Docente Investigador';
+    const taskDesc = (task && task.description) || 'Sin descripción detallada.';
 
     const priorityObj = (() => {
       const p = String(task.priority || '').toLowerCase().trim();
@@ -534,14 +546,14 @@ const EmailModule = {
           </table>
 
           <div class="body" style="padding:22px 26px; font-size:14px; line-height:1.6; background-color:#ffffff;">
-            <div class="greeting" style="font-size:15px; font-weight:600; color:#0f2942; margin-bottom:12px;">Estimado(a) ${docente.name},</div>
+            <div class="greeting" style="font-size:15px; font-weight:600; color:#0f2942; margin-bottom:12px;">Estimado(a) ${docName},</div>
             <p style="margin:0 0 14px; font-size:13.5px; color:#334155; line-height:1.6;">
               Por disposición de la Jefatura de la <strong>Decanatura de Investigación - ESFIM</strong>, se le ha asignado y delegado formalmente el siguiente compromiso académico e investigativo:
             </p>
             
             <div class="task-box" style="background-color:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; padding:16px; margin:14px 0;">
               <div class="task-title" style="font-size:15.5px; font-weight:700; color:#0f2942; margin-bottom:6px;">${task.title}</div>
-              <p style="margin:0 0 10px; color:#475569; font-size:13px; line-height:1.5;">${task.description}</p>
+              <p style="margin:0 0 10px; color:#475569; font-size:13px; line-height:1.5;">${taskDesc}</p>
               
               <div class="meta-grid" style="display:table; width:100%; margin-top:10px; font-size:13px;">
                 <div class="meta-row" style="display:table-row;">
@@ -588,14 +600,14 @@ const EmailModule = {
 ARMADA NACIONAL DE COLOMBIA - ESCUELA DE FORMACIÓN DE INFANTERÍA DE MARINA (ESFIM)
 Decanatura de Investigación - Notificación Oficial de Tarea Delegada
 
-Estimado(a) ${docente.name},
+Estimado(a) ${docName},
 
 Por directriz de la Jefatura se le ha asignado la siguiente tarea:
 - TÍTULO: ${task.title}
 - ÁREA: ${areaName}
 - PRIORIDAD: ${priorityObj.label}
 - FECHA LÍMITE: ${dueDateFormatted}
-- DESCRIPCIÓN: ${task.description}
+- DESCRIPCIÓN: ${taskDesc}
 
 Favor acceder a la plataforma institucional en ${appUrl} para reportar su avance.
     `.trim();
@@ -636,7 +648,7 @@ Favor acceder a la plataforma institucional en ${appUrl} para reportar su avance
       const data = await res.json();
 
       if (!res.ok || !data.success) {
-        throw new Error(data.message || 'El servidor no pudo procesar el envío.');
+        throw new Error(data.message || 'El servidor no pudo procesar el envío de correos.');
       }
 
       const sentCount = data.sentCount || 0;
@@ -649,15 +661,23 @@ Favor acceder a la plataforma institucional en ${appUrl} para reportar su avance
           'success',
           8000
         );
+      } else if (sentCount === 0) {
+        const errorReason = failedRecipients[0]?.error || data.message || 'Servidor SMTP no configurado';
+        AlertsEngine.showToast(
+          'Correos No Enviados por SMTP',
+          `No se pudieron enviar los correos a los miembros: ${errorReason}. Ingrese a "⚙️ Configurar correo SMTP" en el menú superior o defina SMTP_USER y SMTP_PASS en las variables de entorno de Render.`,
+          'danger',
+          14000
+        );
       } else {
         const failedSummary = failedRecipients.slice(0, 3).map(result => {
           const reason = String(result.error || 'Rechazado por SMTP').slice(0, 140);
           return `${result.to}: ${reason}`;
         }).join('; ');
         AlertsEngine.showToast(
-          sentCount > 0 ? 'Envío Parcial' : 'Correos No Aceptados',
-          `${data.message || `SMTP aceptó ${sentCount} de ${recipients.length} correos.`}${failedSummary ? ` Fallos: ${failedSummary}` : ''}`,
-          'danger',
+          'Envío Parcial de Correos',
+          `SMTP entregó ${sentCount} de ${recipients.length} correos. Fallos: ${failedSummary}`,
+          'warning',
           12000
         );
       }

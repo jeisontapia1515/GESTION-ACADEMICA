@@ -96,9 +96,6 @@ async function seedInitialData() {
       console.log("Gestor sincronizado con contraseña de plataforma diefi2026.");
     }
 
-    const count = await User.countDocuments();
-    if (count > 1) { console.log(count + " usuarios en BD."); return; }
-
     const decano = await User.findOne({ email: "juan.perdomo@esfim.edu.co" });
     if (!decano) {
       const doc = new User({
@@ -113,7 +110,53 @@ async function seedInitialData() {
       await doc.save();
       console.log("Decano inicial creado:", doc.email);
     }
-    console.log("Inicialización lista: Cuentas de Decano y Gestor verificadas.");
+
+    // Sincronizar credenciales SMTP institucional en MongoDB desde variables de entorno si existen
+    const EmailConfig = require("./models/EmailConfig");
+    const envUser = (process.env.SMTP_USER || process.env.EMAIL_USER || "").trim();
+    const envPass = (process.env.SMTP_PASS || process.env.EMAIL_PASS || "").trim();
+    if (envUser && envPass) {
+      const host = process.env.SMTP_HOST || process.env.EMAIL_HOST || "smtp.office365.com";
+      const port = parseInt(process.env.SMTP_PORT || process.env.EMAIL_PORT, 10) || 587;
+      const secure = process.env.SMTP_SECURE === "true" || process.env.SMTP_SECURE === "1" || port === 465;
+      const existingEmailCfg = await EmailConfig.findOne({ key: "institutional" });
+      const currentGestorPass = existingEmailCfg?.gestor?.pass;
+      const currentDecanoPass = existingEmailCfg?.decano?.pass;
+
+      if (!existingEmailCfg || !currentGestorPass || !currentDecanoPass) {
+        await EmailConfig.findOneAndUpdate(
+          { key: "institutional" },
+          {
+            key: "institutional",
+            appUrl: (process.env.APP_URL || "").trim(),
+            decano: {
+              host,
+              port,
+              secure,
+              user: (process.env.DECANO_SMTP_USER || envUser).trim(),
+              pass: process.env.DECANO_SMTP_PASS || envPass,
+              fromName: "Decano de Investigación - ESFIM",
+              fromAddress: (process.env.DECANO_SMTP_USER || envUser).trim()
+            },
+            gestor: {
+              host,
+              port,
+              secure,
+              user: (process.env.GESTOR_SMTP_USER || envUser).trim(),
+              pass: process.env.GESTOR_SMTP_PASS || envPass,
+              fromName: "Gestor / Coordinador de Investigación - ESFIM",
+              fromAddress: (process.env.GESTOR_SMTP_USER || envUser).trim()
+            },
+            updatedAt: new Date()
+          },
+          { upsert: true, new: true, setDefaultsOnInsert: true }
+        );
+        console.log("Configuración SMTP institucional sincronizada en MongoDB desde variables de entorno.");
+      }
+    }
+
+    const count = await User.countDocuments();
+    console.log(`Inicialización lista: ${count} usuarios en BD. Cuentas de Decano y Gestor verificadas.`);
   } catch (err) {
     console.error("Error en seedInitialData:", err.message);
   }

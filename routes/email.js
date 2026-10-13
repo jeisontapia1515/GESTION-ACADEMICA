@@ -26,10 +26,25 @@ function getLogoAttachment() {
 function loadEmails() { try { return fs.existsSync(EMAILS_FILE) ? JSON.parse(fs.readFileSync(EMAILS_FILE, "utf8")) : []; } catch(e) { return []; } }
 function saveEmails(e) { try { fs.writeFileSync(EMAILS_FILE, JSON.stringify(e.slice(0, 300), null, 2)); } catch(err) {} }
 
+function getEnvConfig() {
+  const host = process.env.SMTP_HOST || process.env.EMAIL_HOST || "smtp.office365.com";
+  const port = parseInt(process.env.SMTP_PORT || process.env.EMAIL_PORT, 10) || 587;
+  const secure = process.env.SMTP_SECURE === "true" || process.env.SMTP_SECURE === "1" || port === 465;
+  const user = (process.env.SMTP_USER || process.env.EMAIL_USER || "").trim();
+  const pass = (process.env.SMTP_PASS || process.env.EMAIL_PASS || "").trim();
+  const fromAddress = (process.env.SMTP_FROM || process.env.EMAIL_FROM || user).trim();
+  const fromName = process.env.SMTP_FROM_NAME || process.env.EMAIL_FROM_NAME || "Decanatura de Investigación - ESFIM";
+
+  return { host, port, secure, user, pass, fromAddress, fromName };
+}
+
 function normalizeConfig(raw) {
   const c = raw || {};
+  const env = getEnvConfig();
+
   let decano = c.decano || {};
   let gestor = c.gestor || {};
+
   // Compatibilidad hacia atras si era una sola cuenta
   if (!c.decano && !c.gestor && c.host) {
     decano = {
@@ -42,26 +57,59 @@ function normalizeConfig(raw) {
       fromName: c.fromName || "Decano de Investigación - ESFIM"
     };
   }
+
+  // Variables específicas opcionales
+  const decanoEnvUser = (process.env.DECANO_SMTP_USER || "").trim() || env.user;
+  const decanoEnvPass = (process.env.DECANO_SMTP_PASS || "").trim() || env.pass;
+  const decanoEnvHost = (process.env.DECANO_SMTP_HOST || "").trim() || env.host;
+  const decanoEnvPort = parseInt(process.env.DECANO_SMTP_PORT, 10) || env.port;
+
+  const gestorEnvUser = (process.env.GESTOR_SMTP_USER || "").trim() || env.user;
+  const gestorEnvPass = (process.env.GESTOR_SMTP_PASS || "").trim() || env.pass;
+  const gestorEnvHost = (process.env.GESTOR_SMTP_HOST || "").trim() || env.host;
+  const gestorEnvPort = parseInt(process.env.GESTOR_SMTP_PORT, 10) || env.port;
+
+  const resolvedDecano = {
+    host: decano.host || decanoEnvHost,
+    port: parseInt(decano.port, 10) || decanoEnvPort,
+    secure: decano.secure !== undefined ? Boolean(decano.secure) : env.secure,
+    user: (decano.user || decanoEnvUser).trim(),
+    pass: (decano.pass && decano.pass !== "****") ? decano.pass : decanoEnvPass,
+    fromAddress: (decano.fromAddress || decano.user || env.fromAddress || decanoEnvUser).trim(),
+    fromName: decano.fromName || env.fromName || "Decano de Investigación - ESFIM"
+  };
+
+  const resolvedGestor = {
+    host: gestor.host || gestorEnvHost,
+    port: parseInt(gestor.port, 10) || gestorEnvPort,
+    secure: gestor.secure !== undefined ? Boolean(gestor.secure) : env.secure,
+    user: (gestor.user || gestorEnvUser).trim(),
+    pass: (gestor.pass && gestor.pass !== "****") ? gestor.pass : gestorEnvPass,
+    fromAddress: (gestor.fromAddress || gestor.user || env.fromAddress || gestorEnvUser).trim(),
+    fromName: gestor.fromName || env.fromName || "Gestor / Coordinador de Investigación - ESFIM"
+  };
+
+  // Cross-fallback institucional: si una cuenta tiene credenciales y la otra no, compartir credenciales
+  if (!resolvedGestor.pass && resolvedDecano.pass) {
+    resolvedGestor.host = resolvedDecano.host;
+    resolvedGestor.port = resolvedDecano.port;
+    resolvedGestor.secure = resolvedDecano.secure;
+    resolvedGestor.user = resolvedDecano.user;
+    resolvedGestor.pass = resolvedDecano.pass;
+    resolvedGestor.fromAddress = resolvedDecano.fromAddress;
+  } else if (!resolvedDecano.pass && resolvedGestor.pass) {
+    resolvedDecano.host = resolvedGestor.host;
+    resolvedDecano.port = resolvedGestor.port;
+    resolvedDecano.secure = resolvedGestor.secure;
+    resolvedDecano.user = resolvedGestor.user;
+    resolvedDecano.pass = resolvedGestor.pass;
+    resolvedDecano.fromAddress = resolvedGestor.fromAddress;
+  }
+
   return {
     appUrl: (c.appUrl || process.env.APP_URL || "").trim(),
-    decano: {
-      host: decano.host || "smtp.office365.com",
-      port: parseInt(decano.port) || 587,
-      secure: Boolean(decano.secure),
-      user: decano.user || "",
-      pass: decano.pass || "",
-      fromAddress: decano.fromAddress || decano.user || "",
-      fromName: decano.fromName || "Decano de Investigación - ESFIM"
-    },
-    gestor: {
-      host: gestor.host || "smtp.office365.com",
-      port: parseInt(gestor.port) || 587,
-      secure: Boolean(gestor.secure),
-      user: gestor.user || "",
-      pass: gestor.pass || "",
-      fromAddress: gestor.fromAddress || gestor.user || "",
-      fromName: gestor.fromName || "Gestor / Coordinador de Investigación - ESFIM"
-    }
+    decano: resolvedDecano,
+    gestor: resolvedGestor
   };
 }
 
@@ -86,8 +134,8 @@ async function loadConfig() {
 async function saveConfig(c) {
   try {
     fs.writeFileSync(CONFIG_FILE, JSON.stringify(c, null, 2));
-    clearTransporterCache();
   } catch(err) {}
+  clearTransporterCache();
   await EmailConfig.findOneAndUpdate(
     { key: "institutional" },
     { ...c, key: "institutional", updatedAt: new Date() },
@@ -99,15 +147,28 @@ let cachedTransporters = {};
 let cachedSignatures = {};
 
 function clearTransporterCache() {
-  Object.values(cachedTransporters).forEach(transporter => transporter.close());
+  Object.values(cachedTransporters).forEach(transporter => {
+    try { transporter.close(); } catch(e) {}
+  });
   cachedTransporters = {};
   cachedSignatures = {};
+}
+
+function invalidateTransporter(accountCfg) {
+  if (!accountCfg) return;
+  const key = `${accountCfg.host}:${accountCfg.port}:${accountCfg.user}`.toLowerCase();
+  if (cachedTransporters[key]) {
+    try { cachedTransporters[key].close(); } catch(e) {}
+    delete cachedTransporters[key];
+    delete cachedSignatures[key];
+  }
 }
 
 function getTransporterForAccount(accountCfg) {
   if (!nodemailer || !accountCfg || !accountCfg.host || !accountCfg.user || !accountCfg.pass) {
     return null;
   }
+
   const key = `${accountCfg.host}:${accountCfg.port}:${accountCfg.user}`.toLowerCase();
   const signature = JSON.stringify({
     host: accountCfg.host,
@@ -119,27 +180,37 @@ function getTransporterForAccount(accountCfg) {
   if (cachedTransporters[key] && cachedSignatures[key] === signature) {
     return cachedTransporters[key];
   }
-  if (cachedTransporters[key]) cachedTransporters[key].close();
+  if (cachedTransporters[key]) {
+    try { cachedTransporters[key].close(); } catch(e) {}
+  }
 
-  const transporter = nodemailer.createTransport({
+  const port = parseInt(accountCfg.port, 10) || 587;
+  const isSecure = Boolean(accountCfg.secure) || port === 465;
+  const isOffice365 = /office365|outlook/i.test(accountCfg.host);
+
+  const transporterOptions = {
     host: accountCfg.host,
-    port: parseInt(accountCfg.port) || 587,
-    secure: Boolean(accountCfg.secure),
+    port: port,
+    secure: isSecure,
     auth: {
       user: accountCfg.user,
       pass: accountCfg.pass
     },
-    connectionTimeout: 10000,
-    greetingTimeout: 10000,
-    socketTimeout: 30000,
-    pool: true,
-    maxConnections: 1,
-    rateLimit: 1,
-    rateDelta: 1000,
+    connectionTimeout: 15000,
+    greetingTimeout: 15000,
+    socketTimeout: 35000,
+    pool: false, // pool: false evita desconexiones y sockets muertos en hosting cloud / Render
     tls: {
-      rejectUnauthorized: false
+      rejectUnauthorized: false,
+      minVersion: "TLSv1.2"
     }
-  });
+  };
+
+  if (isOffice365 && !isSecure) {
+    transporterOptions.requireTLS = true;
+  }
+
+  const transporter = nodemailer.createTransport(transporterOptions);
   cachedTransporters[key] = transporter;
   cachedSignatures[key] = signature;
   return transporter;
@@ -147,6 +218,13 @@ function getTransporterForAccount(accountCfg) {
 
 function formatFrom(name, address) {
   return `"${String(name || 'Decanatura ESFIM').replace(/"/g, '')}" <${String(address || '').trim()}>`;
+}
+
+function getOptimalFrom(accountCfg) {
+  // En Microsoft 365, usar la cuenta autenticada en el encabezado From previene 554 SendAsDenied
+  const address = accountCfg.user || accountCfg.fromAddress || "";
+  const name = accountCfg.fromName || "Decanatura de Investigación ESFIM";
+  return formatFrom(name, address);
 }
 
 function isSendAsDenied(error) {
@@ -167,6 +245,10 @@ async function sendMailWithRetry(transporter, mailOptions, accountCfg) {
       const info = await transporter.sendMail(options);
       return { info, from: options.from, usedAuthenticatedSender };
     } catch (error) {
+      attempts += 1;
+      console.error(`Intento ${attempts}/3 de envío SMTP fallido:`, error.message);
+
+      // Si SendAsDenied, reintentar con el correo autenticado
       if (!usedAuthenticatedSender && isSendAsDenied(error) && accountCfg.user) {
         options = {
           ...options,
@@ -179,19 +261,27 @@ async function sendMailWithRetry(transporter, mailOptions, accountCfg) {
         continue;
       }
 
-      attempts += 1;
-      if (!isTemporarySmtpLimit(error) || attempts >= 3) throw error;
+      // Invalidar transporte en caso de socket caído / timeout
+      invalidateTransporter(accountCfg);
+
+      if (attempts >= 3) throw error;
       await new Promise(resolve => setTimeout(resolve, attempts * 1500));
+
+      const fresh = getTransporterForAccount(accountCfg);
+      if (fresh) transporter = fresh;
     }
   }
 }
 
 function resolveAccount(cfg, requestedAccount, user) {
   const norm = normalizeConfig(cfg);
-  if (requestedAccount === "decano" && norm.decano.user && norm.decano.pass) {
+  const decanoReady = Boolean(norm.decano.host && norm.decano.user && norm.decano.pass);
+  const gestorReady = Boolean(norm.gestor.host && norm.gestor.user && norm.gestor.pass);
+
+  if (requestedAccount === "decano" && decanoReady) {
     return { cfg: norm.decano, key: "decano" };
   }
-  if (requestedAccount === "gestor" && norm.gestor.user && norm.gestor.pass) {
+  if (requestedAccount === "gestor" && gestorReady) {
     return { cfg: norm.gestor, key: "gestor" };
   }
 
@@ -202,18 +292,18 @@ function resolveAccount(cfg, requestedAccount, user) {
     const isDecano = userEmail.includes("decano") || userName.includes("decano") || userName.includes("perdomo");
 
     if (isDecano) {
-      if (norm.decano.user && norm.decano.pass) return { cfg: norm.decano, key: "decano" };
-      if (norm.gestor.user && norm.gestor.pass) return { cfg: norm.gestor, key: "gestor" };
+      if (decanoReady) return { cfg: norm.decano, key: "decano" };
+      if (gestorReady) return { cfg: norm.gestor, key: "gestor" };
     } else {
-      // Es Gestor / Coordinador (ej. Katia López, Eduardo Puello u otro directivo)
-      if (norm.gestor.user && norm.gestor.pass) return { cfg: norm.gestor, key: "gestor" };
-      if (norm.decano.user && norm.decano.pass) return { cfg: norm.decano, key: "decano" };
+      if (gestorReady) return { cfg: norm.gestor, key: "gestor" };
+      if (decanoReady) return { cfg: norm.decano, key: "decano" };
     }
   }
 
-  // Fallbacks
-  if (norm.gestor.user && norm.gestor.pass) return { cfg: norm.gestor, key: "gestor" };
-  if (norm.decano.user && norm.decano.pass) return { cfg: norm.decano, key: "decano" };
+  // Fallbacks: usar la cuenta que tenga credenciales activas
+  if (gestorReady) return { cfg: norm.gestor, key: "gestor" };
+  if (decanoReady) return { cfg: norm.decano, key: "decano" };
+
   return { cfg: norm.gestor.pass ? norm.gestor : norm.decano, key: norm.gestor.pass ? "gestor" : "decano" };
 }
 
@@ -452,7 +542,7 @@ router.post("/send-email", protect, async (req, res) => {
   try {
     const t = getTransporterForAccount(targetCfg);
     if (t) {
-      const fromStr = formatFrom(targetCfg.fromName, targetCfg.fromAddress || targetCfg.user);
+      const fromStr = getOptimalFrom(targetCfg);
       const replyTo = formatFrom(targetCfg.fromName, targetCfg.fromAddress || targetCfg.user);
 
       const { info, from, usedAuthenticatedSender } = await sendMailWithRetry(t, {
@@ -472,7 +562,7 @@ router.post("/send-email", protect, async (req, res) => {
     } else {
       smtpError = `Servidor SMTP (${resolved.key}) no configurado.`;
       emailRecord.status = "simulated";
-      emailRecord.smtpMessage = `${smtpError} Registrado en buzón virtual.`;
+      emailRecord.smtpMessage = `Servidor SMTP (${resolved.key}) no configurado (guardado en buzón virtual)`;
     }
   } catch(e) {
     console.error("Error SMTP al enviar a", to, ":", e.message);
@@ -554,11 +644,12 @@ router.post("/send-email-batch", protect, async (req, res) => {
 
     if (t) {
       try {
-        const fromStr = formatFrom(targetCfg.fromName, targetCfg.fromAddress || targetCfg.user);
+        const fromStr = getOptimalFrom(targetCfg);
+        const replyToStr = formatFrom(targetCfg.fromName, targetCfg.fromAddress || targetCfg.user);
         const toStr = toName ? `"${String(toName).replace(/"/g, "")}" <${to.trim()}>` : to.trim();
         const { info, from, usedAuthenticatedSender } = await sendMailWithRetry(t, {
           from: fromStr,
-          replyTo: fromStr,
+          replyTo: replyToStr,
           to: toStr,
           subject: emailRecord.subject,
           html: emailRecord.html,
@@ -576,7 +667,7 @@ router.post("/send-email-batch", protect, async (req, res) => {
         emailRecord.smtpMessage = `Fallo de envío SMTP (${resolved.key}): ${e.message} (Disponible en buzón virtual EFIM)`;
       }
     } else {
-      smtpError = `Servidor SMTP (${resolved.key}) no configurado.`;
+      smtpError = `Servidor SMTP (${resolved.key}) no configurado. Configure credenciales en el módulo de correo o defina SMTP_USER y SMTP_PASS en Render.`;
       emailRecord.status = "simulated";
       emailRecord.smtpMessage = `${smtpError} Registrado en buzón virtual.`;
     }
