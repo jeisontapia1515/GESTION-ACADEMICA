@@ -14,6 +14,19 @@ router.get("/", protect, async (req, res) => {
   }
 });
 
+// POST /api/users/heartbeat - Record live presence and activity
+router.post("/heartbeat", protect, async (req, res) => {
+  try {
+    const now = new Date();
+    await User.findByIdAndUpdate(req.user._id, { 
+      $set: { lastActiveAt: now }
+    });
+    res.json({ success: true, timestamp: now });
+  } catch (err) {
+    res.status(500).json({ success: false });
+  }
+});
+
 // POST /api/users - Create new docente (admin only)
 router.post("/", protect, adminOnly, async (req, res) => {
   try {

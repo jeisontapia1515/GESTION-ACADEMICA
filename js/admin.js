@@ -23,6 +23,39 @@ const AdminModule = {
     return `<div class="${className}" style="width:${size}; height:${size}; min-width:${size}; border-radius:50%; display:inline-flex; align-items:center; justify-content:center; font-weight:700; flex-shrink:0; ${extraStyle}">${avatarValue || initials}</div>`;
   },
 
+  isUserOnline(user) {
+    if (!user) return false;
+    const activeTime = user.lastActiveAt ? new Date(user.lastActiveAt).getTime() : 0;
+    // Si tuvo actividad en los últimos 2.5 minutos (150 segundos), está en línea
+    return (Date.now() - activeTime) < 150000;
+  },
+
+  getOnlineStatusHtml(user, showText = true) {
+    const isOnline = this.isUserOnline(user);
+    const lastLogin = user.lastLogin ? new Date(user.lastLogin).toLocaleString('es-ES', {
+      day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit'
+    }) : 'Sin registro de ingreso';
+
+    const lastActive = user.lastActiveAt ? new Date(user.lastActiveAt).toLocaleString('es-ES', {
+      day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit'
+    }) : 'Sin actividad registrada';
+
+    if (isOnline) {
+      return `
+        <span class="user-presence-pill online" title="Docente conectado en la plataforma ahora mismo.\nÚltimo ingreso: ${lastLogin}\nÚltima actividad: ${lastActive}">
+          <span class="presence-dot online"></span>
+          ${showText ? 'En Línea' : ''}
+        </span>
+      `;
+    }
+    return `
+      <span class="user-presence-pill offline" title="Docente no conectado actualmente.\nÚltimo ingreso: ${lastLogin}\nÚltima actividad: ${lastActive}">
+        <span class="presence-dot offline"></span>
+        ${showText ? (user.lastLogin ? `Últ. ingreso: ${lastLogin}` : 'Sin ingresar') : ''}
+      </span>
+    `;
+  },
+
   render() {
     const container = document.getElementById('adminView');
     if (!container) return;
@@ -471,8 +504,14 @@ const AdminModule = {
                 ${task.area === 'decanatura' || assignees.length >= employees.length ? '🏛️ Plenaria (Todos los Miembros)' : `${assignees[0].name} (+${assignees.length - 1} docentes)`}
               </span>
             ` : `
-              ${this.getAvatarHtml(assignees[0]?.avatar, assignees[0]?.name ? assignees[0].name.slice(0, 2).toUpperCase() : '??', '24px', 'assignee-avatar')}
-              <span>${assignees[0] ? assignees[0].name : 'Sin asignar'}</span>
+              <div style="position:relative; display:inline-block;">
+                ${this.getAvatarHtml(assignees[0]?.avatar, assignees[0]?.name ? assignees[0].name.slice(0, 2).toUpperCase() : '??', '24px', 'assignee-avatar')}
+                <span class="presence-dot ${this.isUserOnline(assignees[0]) ? 'online' : 'offline'}" style="position:absolute; bottom:-1px; right:-1px; width:8px; height:8px; border-radius:50%; border:1.5px solid var(--surface-1);" title="${this.isUserOnline(assignees[0]) ? 'Docente en línea ahora' : 'Docente desconectado'}"></span>
+              </div>
+              <span style="display:inline-flex; align-items:center; gap:0.35rem;">
+                ${assignees[0] ? assignees[0].name : 'Sin asignar'}
+                ${assignees[0] && this.isUserOnline(assignees[0]) ? '<span style="color:#10b981; font-size:0.68rem; font-weight:700;">● en línea</span>' : ''}
+              </span>
             `)}
           </div>
 
@@ -569,8 +608,14 @@ const AdminModule = {
                     </div>
                   ` : `
                     <div style="display:flex; align-items:center; gap:0.4rem;">
-                      ${this.getAvatarHtml(assignees[0]?.avatar, assignees[0]?.name ? assignees[0].name.slice(0, 2).toUpperCase() : '??', '22px', 'assignee-avatar')}
-                      <span style="font-size:0.85rem;">${assignees[0] ? assignees[0].name : 'Sin asignar'}</span>
+                      <div style="position:relative; display:inline-block;">
+                        ${this.getAvatarHtml(assignees[0]?.avatar, assignees[0]?.name ? assignees[0].name.slice(0, 2).toUpperCase() : '??', '22px', 'assignee-avatar')}
+                        <span class="presence-dot ${this.isUserOnline(assignees[0]) ? 'online' : 'offline'}" style="position:absolute; bottom:-1px; right:-1px; width:7px; height:7px; border-radius:50%; border:1.5px solid var(--surface-1);" title="${this.isUserOnline(assignees[0]) ? 'Docente en línea ahora' : 'Docente desconectado'}"></span>
+                      </div>
+                      <span style="font-size:0.85rem;">
+                        ${assignees[0] ? assignees[0].name : 'Sin asignar'}
+                        ${assignees[0] && this.isUserOnline(assignees[0]) ? '<span style="color:#10b981; font-size:0.65rem; font-weight:700; margin-left:2px;">●</span>' : ''}
+                      </span>
                     </div>
                   `)}
                 </td>
@@ -1471,10 +1516,21 @@ const AdminModule = {
             <div class="docente-avatar-wrap" onclick="AdminModule.triggerDocentePhotoUpload('${emp.id || emp._id}')" title="Clic para subir o cambiar foto de ${emp.name}">
               ${this.getAvatarHtml(emp.avatar, emp.name ? emp.name.slice(0, 2).toUpperCase() : 'DC', '44px')}
               <span class="avatar-camera-pill" style="position:absolute; bottom:-2px; right:-2px; width:16px; height:16px; background:var(--primary); color:#fff; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:0.58rem; border:1.5px solid var(--surface-2); box-shadow:0 1px 3px rgba(0,0,0,0.35);" title="Cambiar foto">📷</span>
+              <span class="presence-dot ${this.isUserOnline(emp) ? 'online' : 'offline'}" style="position:absolute; top:-2px; right:-2px; width:12px; height:12px; border-radius:50%; border:2px solid var(--surface-2);" title="${this.isUserOnline(emp) ? 'En línea en este momento' : 'Desconectado'}"></span>
             </div>
             <div>
-              <div style="font-weight:700; color:var(--text-main); font-size:0.95rem;">${emp.name}</div>
+              <div style="display:flex; align-items:center; gap:0.5rem; flex-wrap:wrap;">
+                <span style="font-weight:700; color:var(--text-main); font-size:0.95rem;">${emp.name}</span>
+                ${this.getOnlineStatusHtml(emp, true)}
+              </div>
               <div style="font-size:0.82rem; color:var(--text-muted); font-family:var(--font-mono);">${emp.email}</div>
+              
+              <!-- Historial de ingresos y auditoría -->
+              <div style="font-size:0.75rem; color:var(--text-muted); margin-top:0.2rem;">
+                🔑 <strong>Ingresos registrados:</strong> ${emp.loginCount || (emp.lastLogin ? 1 : 0)} veces 
+                • <strong>Último acceso:</strong> <span style="color:${this.isUserOnline(emp) ? '#10b981' : 'var(--text-main)'}; font-weight:600;">${emp.lastLogin ? new Date(emp.lastLogin).toLocaleString('es-ES', { day:'2-digit', month:'short', year:'numeric', hour:'2-digit', minute:'2-digit' }) : 'Nunca ha ingresado'}</span>
+              </div>
+
               <div style="display:flex; gap:0.4rem; align-items:center; margin-top:0.35rem; flex-wrap:wrap;">
                 <span class="badge ${areaObj ? areaObj.badgeClass : 'badge-area-formativa'}" style="font-size:0.7rem; padding:1px 6px;">${areaObj ? areaObj.icon : '🏛️'} ${areaBadge}</span>
                 <span style="font-size:0.75rem; color:var(--accent-cyan); font-weight:600;">⚡ ${pendingCount} en curso</span>

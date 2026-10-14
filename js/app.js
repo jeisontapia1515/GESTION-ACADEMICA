@@ -88,14 +88,36 @@ const App = {
     });
   },
 
+  lastPresencePulse: 0,
+
   async checkLiveUpdates() {
     const user = Auth.getCurrentUser();
     if (!user) return;
     try {
+      const now = Date.now();
+      // Enviar latido de presencia cada 15 segundos
+      if (now - this.lastPresencePulse > 15000) {
+        this.lastPresencePulse = now;
+        const token = (window.appStore && window.appStore.getToken) ? window.appStore.getToken() : (sessionStorage.getItem('efim_token') || localStorage.getItem('efim_token'));
+        if (token) {
+          fetch('/api/users/heartbeat', {
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${token}` }
+          }).catch(() => {});
+        }
+      }
+
       const changed = await window.appStore.checkAndSyncIfOutdated();
       if (window.appStore.syncNotificationsFromServer) {
         await window.appStore.syncNotificationsFromServer();
       }
+
+      // Si es directivo, mantener sincronizada la lista de usuarios y estado en línea cada 15 segundos
+      if (Auth.isAdmin() && (now - (this.lastUserSync || 0) > 15000)) {
+        this.lastUserSync = now;
+        await this.syncUsersFromServer();
+      }
+
       if (changed) {
         // Only refresh view if no form input is currently focused to avoid interrupting user typing
         const activeEl = document.activeElement;
@@ -126,7 +148,10 @@ const App = {
           role: u.role,
           area: u.area,
           department: u.department,
-          avatar: u.avatar
+          avatar: u.avatar,
+          lastLogin: u.lastLogin,
+          lastActiveAt: u.lastActiveAt,
+          loginCount: u.loginCount || 0
         }));
         window.appStore.saveUsers(mapped);
 
@@ -471,7 +496,18 @@ const App = {
     document.getElementById('detailAssigneeName').innerHTML = isDraft
       ? '<span style="color:var(--text-muted); font-style:italic;">Por asignar responsable</span>'
       : (assignees.length > 0
-        ? assignees.map(a => `<span class="badge badge-secondary" style="font-size:0.8rem; margin:2px;">👤 ${a.name} &lt;${a.email}&gt;</span>`).join('')
+        ? assignees.map(a => {
+            const u = window.appStore.getUserById(a.id || a._id || a.email) || a;
+            const isOnline = window.AdminModule && window.AdminModule.isUserOnline(u);
+            const lastLoginStr = u.lastLogin ? new Date(u.lastLogin).toLocaleString('es-ES', { day:'2-digit', month:'short', hour:'2-digit', minute:'2-digit' }) : 'Sin ingresos';
+            return `
+              <div style="display:inline-flex; align-items:center; gap:0.35rem; margin:2px;" class="badge badge-secondary">
+                <span class="presence-dot ${isOnline ? 'online' : 'offline'}" style="width:7px; height:7px; border-radius:50%; display:inline-block;"></span>
+                <span>👤 ${a.name}</span>
+                <span style="font-size:0.7rem; color:${isOnline ? '#10b981' : 'var(--text-muted)'}; font-weight:700;">(${isOnline ? 'En línea' : 'Últ: ' + lastLoginStr})</span>
+              </div>
+            `;
+          }).join('')
         : 'Sin asignar');
     document.getElementById('detailDueDate').textContent = dueDateFormatted;
     document.getElementById('detailTimeRemaining').textContent = isDraft ? 'En espera de asignación' : alert.formattedRemaining;

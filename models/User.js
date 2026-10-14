@@ -23,6 +23,9 @@ const userSchema = new mongoose.Schema({
   isActive: { type: Boolean, default: true },
   mustChangePassword: { type: Boolean, default: false },
   pushSubscriptions: { type: [pushSubscriptionSchema], default: [] },
+  lastLogin: { type: Date, default: null },
+  lastActiveAt: { type: Date, default: null },
+  loginCount: { type: Number, default: 0 },
   createdAt: { type: Date, default: Date.now }
 });
 

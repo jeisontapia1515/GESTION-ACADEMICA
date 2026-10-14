@@ -42,6 +42,11 @@ router.post("/login", async (req, res) => {
       }
     }
 
+    user.lastLogin = new Date();
+    user.lastActiveAt = new Date();
+    user.loginCount = (user.loginCount || 0) + 1;
+    await user.save();
+
     const token = signToken(user._id);
     res.json({ success: true, token, user: user.toJSON() });
   } catch (err) {
