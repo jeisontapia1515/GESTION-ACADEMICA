@@ -324,6 +324,64 @@ const EmailModule = {
     }
   },
 
+  // Verificar conexión SMTP del servidor
+  async smtpDiagnose(account) {
+    const accountToTest = account || document.getElementById('testEmailAccountSelect')?.value || this.activeAccount || 'decano';
+    const resultBox = document.getElementById('testEmailResult');
+    if (resultBox) {
+      resultBox.style.display = 'block';
+      resultBox.style.background = 'var(--surface-2)';
+      resultBox.style.border = '1px solid var(--border)';
+      resultBox.innerHTML = `<span>🔄 Verificando conexión SMTP para cuenta <strong>${accountToTest}</strong>...</span>`;
+    }
+
+    try {
+      const res = await fetch('/api/smtp-diagnose', {
+        method: 'POST',
+        headers: this.getHeaders(),
+        body: JSON.stringify({ account: accountToTest })
+      });
+      const data = await res.json();
+      const d = data.diagnosis || {};
+      if (data.success) {
+        if (resultBox) {
+          resultBox.style.background = 'rgba(46, 204, 113, 0.15)';
+          resultBox.style.border = '1px solid #2ecc71';
+          resultBox.innerHTML = `
+            <div>
+              <strong style="color:#2ecc71;">✅ Conexión SMTP OK:</strong> ${d.connectivity}
+              <p style="margin:0.25rem 0 0; font-size:0.8rem; color:var(--text-muted);">
+                Servidor: <code>${d.host}:${d.port}</code> | Seguro: ${d.secure ? 'SSL/TLS' : 'STARTTLS'} | Usuario: ${d.user}
+              </p>
+            </div>
+          `;
+        }
+        AlertsEngine.showToast('SMTP Conectado', d.connectivity, 'success');
+      } else {
+        if (resultBox) {
+          resultBox.style.background = 'rgba(231, 76, 60, 0.15)';
+          resultBox.style.border = '1px solid #e74c3c';
+          resultBox.innerHTML = `
+            <div>
+              <strong style="color:#e74c3c;">❌ Error de Conexión SMTP:</strong> ${d.error || data.message}
+              <p style="margin:0.25rem 0 0; font-size:0.8rem; color:var(--text-muted);">
+                Servidor: <code>${d.host}:${d.port}</code> | Configurado: ${d.configured ? 'Sí' : 'No'}
+              </p>
+            </div>
+          `;
+        }
+        AlertsEngine.showToast('Fallo SMTP', d.error || data.message, 'danger');
+      }
+    } catch (err) {
+      if (resultBox) {
+        resultBox.style.background = 'rgba(231, 76, 60, 0.15)';
+        resultBox.style.border = '1px solid #e74c3c';
+        resultBox.innerHTML = `<strong>❌ Error:</strong> ${err.message}`;
+      }
+      AlertsEngine.showToast('Error', err.message, 'danger');
+    }
+  },
+
   async loadEmailHistory() {
     const listContainer = document.getElementById('emailHistoryContainer');
     if (!listContainer) return;

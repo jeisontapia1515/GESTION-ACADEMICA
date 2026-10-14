@@ -1157,7 +1157,10 @@
 
             <div id="testEmailResult" style="display:none; padding:1rem; border-radius:6px; margin:1rem 0; font-size:0.85rem;"></div>
 
-            <div style="display:flex; justify-content:flex-end; gap:0.5rem; margin-top:1rem;">
+            <div style="display:flex; justify-content:flex-end; gap:0.5rem; margin-top:1rem; flex-wrap:wrap;">
+              <button type="button" id="btnSmtpDiagnose" class="btn btn-sm btn-outline-info" style="padding:0.5rem 1rem;" onclick="EmailModule.smtpDiagnose()">
+                🔍 Verificar Conexión SMTP
+              </button>
               <button type="submit" id="btnSendTestEmail" class="btn btn-primary" style="padding:0.6rem 1.25rem;">
                 ✉️ Enviar Correo de Prueba
               </button>

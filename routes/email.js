@@ -733,4 +733,58 @@ router.post("/send-email-batch", protect, async (req, res) => {
   });
 });
 
+// POST /api/smtp-diagnose - Verifica la conexión SMTP y diagnóstico detallado
+router.post("/smtp-diagnose", protect, async (req, res) => {
+  if (req.user.role !== 'admin') {
+    return res.status(403).json({ success: false, message: "Acceso restringido." });
+  }
+  const { account } = req.body;
+  const cfg = await loadConfig();
+  const resolved = resolveAccount(cfg, account || "decano", req.user);
+  const targetCfg = resolved.cfg;
+
+  const diagnosis = {
+    account: resolved.key,
+    host: targetCfg.host,
+    port: targetCfg.port,
+    secure: Boolean(targetCfg.secure),
+    user: targetCfg.user ? targetCfg.user.replace(/(.{2}).*(@.*)/, "$1***$2") : null,
+    configured: Boolean(targetCfg.host && targetCfg.user && targetCfg.pass),
+    connectivity: null,
+    error: null
+  };
+
+  if (!nodemailer) {
+    diagnosis.error = "nodemailer no está instalado";
+    return res.json({ success: false, diagnosis });
+  }
+
+  if (!diagnosis.configured) {
+    diagnosis.error = "Credenciales SMTP incompletas";
+    return res.json({ success: false, diagnosis });
+  }
+
+  try {
+    const t = getTransporterForAccount(targetCfg);
+    if (!t) {
+      diagnosis.error = "No se pudo crear el transporter";
+      return res.json({ success: false, diagnosis });
+    }
+
+    // Verificar conexión con timeout de 20s
+    const connPromise = t.verify();
+    const timeoutPromise = new Promise((_, reject) =>
+      setTimeout(() => reject(new Error("Timeout de conexión (20s)")), 20000)
+    );
+
+    await Promise.race([connPromise, timeoutPromise]);
+    diagnosis.connectivity = "OK - Servidor SMTP responde";
+    res.json({ success: true, diagnosis });
+  } catch (err) {
+    diagnosis.connectivity = "FALLIDO";
+    diagnosis.error = err.message;
+    res.json({ success: false, diagnosis });
+  }
+});
+
 module.exports = router;
