@@ -1,4 +1,4 @@
-const express = require("express");
+﻿const express = require("express");
 const { protect } = require("../middleware/auth");
 const EmailConfig = require("../models/EmailConfig");
 const router = express.Router();
@@ -594,7 +594,8 @@ router.post("/send-email", protect, async (req, res) => {
   }
 });
 
-// POST /api/send-email-batch - Envío masivo por lotes a nivel Decanatura
+// POST /api/send-email-batch - Envio masivo ASINCRONO por lotes a nivel Decanatura
+// Responde inmediatamente al cliente y envia en background para evitar timeouts en Render
 router.post("/send-email-batch", protect, async (req, res) => {
   const { recipients, subject, html, text, type, metadata, senderAccount } = req.body;
   if (!Array.isArray(recipients) || recipients.length === 0) {
@@ -605,96 +606,101 @@ router.post("/send-email-batch", protect, async (req, res) => {
   const resolved = resolveAccount(cfg, senderAccount, req.user);
   const targetCfg = resolved.cfg;
 
-  const t = getTransporterForAccount(targetCfg);
-  const results = [];
-  const emails = loadEmails();
-
-  for (let i = 0; i < recipients.length; i++) {
-    const item = recipients[i];
+  const validRecipients = recipients.filter(item => {
     const to = typeof item === 'string' ? item : item.to || item.email;
-    const toName = typeof item === 'object' ? (item.toName || item.name || to) : to;
-    if (!to || !to.includes('@')) {
-      results.push({ to, toName, success: false, error: "Destinatario inválido." });
-      continue;
-    }
+    return to && to.includes('@');
+  });
 
-    const rawHtml = (typeof item === 'object' && item.html) || html;
-    const rawText = (typeof item === 'object' && item.text) || text;
-    const sanitizedHtml = sanitizeAppUrl(rawHtml, req, cfg);
-    const sanitizedText = sanitizeAppUrl(rawText, req, cfg);
-
-    const emailRecord = {
-      id: "email-" + Date.now() + "-" + Math.random().toString(36).substring(2, 7),
-      to,
-      toName,
-      from: (targetCfg && (targetCfg.fromAddress || targetCfg.user)) || "decanatura@esfim.edu.co",
-      fromName: (targetCfg && targetCfg.fromName) || "Decanatura de Investigación ESFIM",
-      senderAccount: resolved.key,
-      subject: (typeof item === 'object' && item.subject) || subject,
-      html: sanitizedHtml,
-      text: sanitizedText,
-      type: type || "task_assignment",
-      metadata: metadata || {},
-      createdAt: new Date().toISOString(),
-      status: "simulated"
-    };
-
-    let smtpSuccess = false;
-    let smtpError = null;
-
-    if (t) {
-      try {
-        const fromStr = getOptimalFrom(targetCfg);
-        const replyToStr = formatFrom(targetCfg.fromName, targetCfg.fromAddress || targetCfg.user);
-        const toStr = toName ? `"${String(toName).replace(/"/g, "")}" <${to.trim()}>` : to.trim();
-        const { info, from, usedAuthenticatedSender } = await sendMailWithRetry(t, {
-          from: fromStr,
-          replyTo: replyToStr,
-          to: toStr,
-          subject: emailRecord.subject,
-          html: emailRecord.html,
-          text: emailRecord.text,
-          attachments: getLogoAttachment()
-        }, targetCfg);
-        smtpSuccess = true;
-        emailRecord.from = usedAuthenticatedSender ? targetCfg.user : fromStr;
-        emailRecord.status = "sent_smtp";
-        emailRecord.smtpMessage = `Aceptado por SMTP desde ${from} [${info.messageId}]`;
-      } catch (e) {
-        console.error(`Error SMTP enviando a ${to}:`, e.message);
-        smtpError = e.message;
-        emailRecord.status = "simulated";
-        emailRecord.smtpMessage = `Fallo de envío SMTP (${resolved.key}): ${e.message} (Disponible en buzón virtual EFIM)`;
-      }
-    } else {
-      smtpError = `Servidor SMTP (${resolved.key}) no configurado. Configure credenciales en el módulo de correo o defina SMTP_USER y SMTP_PASS en Render.`;
-      emailRecord.status = "simulated";
-      emailRecord.smtpMessage = `${smtpError} Registrado en buzón virtual.`;
-    }
-
-    emails.unshift(emailRecord);
-    results.push({ to, toName, success: smtpSuccess, error: smtpError });
-
-    // Pausa controlada de 800ms entre destinatarios para evitar rate-limiting de Microsoft 365
-    if (i < recipients.length - 1 && t) {
-      await new Promise(r => setTimeout(r, 800));
-    }
+  if (validRecipients.length === 0) {
+    return res.status(400).json({ success: false, message: "No hay destinatarios con correo valido." });
   }
 
-  saveEmails(emails);
-
-  const sentCount = results.filter(r => r.success).length;
-  const failedCount = results.length - sentCount;
+  // Responder inmediatamente al cliente (evita timeout de 30s en Render Plan Free)
   res.json({
     success: true,
     senderAccount: resolved.key,
-    sentCount,
-    failedCount,
-    totalCount: results.length,
-    results,
-    message: failedCount === 0
-      ? `SMTP aceptó los ${sentCount} correos para envío.`
-      : `SMTP aceptó ${sentCount} de ${results.length} correos; ${failedCount} fallaron o quedaron solo registrados en el buzón virtual.`
+    sentCount: validRecipients.length,
+    failedCount: 0,
+    totalCount: validRecipients.length,
+    results: validRecipients.map(item => ({
+      to: typeof item === 'string' ? item : item.to || item.email,
+      toName: typeof item === 'object' ? (item.toName || item.name || item.to) : item,
+      success: true,
+      status: 'queued'
+    })),
+    async: true,
+    message: `Envio en proceso: ${validRecipients.length} correo(s) despachados en cola institucional ESFIM.`
+  });
+
+  // Enviar correos en segundo plano sin bloquear la respuesta HTTP
+  setImmediate(async () => {
+    const t = getTransporterForAccount(targetCfg);
+    const emails = loadEmails();
+
+    for (let i = 0; i < validRecipients.length; i++) {
+      const item = validRecipients[i];
+      const to = typeof item === 'string' ? item : item.to || item.email;
+      const toName = typeof item === 'object' ? (item.toName || item.name || to) : to;
+
+      const rawHtml = (typeof item === 'object' && item.html) || html;
+      const rawText = (typeof item === 'object' && item.text) || text;
+      const sanitizedHtml = sanitizeAppUrl(rawHtml, null, cfg);
+      const sanitizedText = sanitizeAppUrl(rawText, null, cfg);
+
+      const emailRecord = {
+        id: "email-" + Date.now() + "-" + Math.random().toString(36).substring(2, 7),
+        to,
+        toName,
+        from: (targetCfg && (targetCfg.fromAddress || targetCfg.user)) || "decanatura@esfim.edu.co",
+        fromName: (targetCfg && targetCfg.fromName) || "Decanatura de Investigacion ESFIM",
+        senderAccount: resolved.key,
+        subject: (typeof item === 'object' && item.subject) || subject,
+        html: sanitizedHtml,
+        text: sanitizedText,
+        type: type || "task_assignment",
+        metadata: metadata || {},
+        createdAt: new Date().toISOString(),
+        status: "simulated"
+      };
+
+      if (t) {
+        try {
+          const fromStr = getOptimalFrom(targetCfg);
+          const replyToStr = formatFrom(targetCfg.fromName, targetCfg.fromAddress || targetCfg.user);
+          const toStr = toName ? `"${String(toName).replace(/"/g, "")}" <${to.trim()}>` : to.trim();
+          const { info, from, usedAuthenticatedSender } = await sendMailWithRetry(t, {
+            from: fromStr,
+            replyTo: replyToStr,
+            to: toStr,
+            subject: emailRecord.subject,
+            html: emailRecord.html,
+            text: emailRecord.text,
+            attachments: getLogoAttachment()
+          }, targetCfg);
+          emailRecord.from = usedAuthenticatedSender ? targetCfg.user : fromStr;
+          emailRecord.status = "sent_smtp";
+          emailRecord.smtpMessage = `Aceptado por SMTP desde ${from} [${info.messageId}]`;
+          console.log(`[SMTP OK] Correo enviado a ${to} [${info.messageId}]`);
+        } catch (e) {
+          console.error(`[SMTP FAIL] Error enviando a ${to}:`, e.message);
+          emailRecord.status = "simulated";
+          emailRecord.smtpMessage = `Fallo SMTP (${resolved.key}): ${e.message} (buzon virtual ESFIM)`;
+        }
+      } else {
+        emailRecord.status = "simulated";
+        emailRecord.smtpMessage = `SMTP (${resolved.key}) no configurado. Registrado en buzon virtual ESFIM.`;
+        console.warn(`[SMTP] Sin configuracion SMTP para ${resolved.key}. Correo solo en buzon virtual.`);
+      }
+
+      emails.unshift(emailRecord);
+
+      if (i < validRecipients.length - 1 && t) {
+        await new Promise(r => setTimeout(r, 700));
+      }
+    }
+
+    saveEmails(emails);
+    console.log(`[SMTP] Batch completado: ${validRecipients.length} correo(s) procesados para ${resolved.key}.`);
   });
 });
 

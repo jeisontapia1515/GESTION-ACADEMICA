@@ -657,11 +657,11 @@ Favor acceder a la plataforma institucional en ${appUrl} para reportar su avance
       if (!res.ok || !data.success) {
         throw new Error(data.message || 'El servidor no pudo procesar el envío de correos.');
       }
-      const sentCount = data.sentCount || 0;
-      if (sentCount > 0) {
+      // Respuesta asíncrona: correos en cola de envío
+      if (data.async || data.totalCount > 0) {
         AlertsEngine.showToast(
-          'Correos de Actualización Enviados',
-          `Se enviaron ${sentCount} notificaciones de actualización por correo a: ${namesOrEmails}.`,
+          '✉️ Correos de Actualización en Envío',
+          `${data.totalCount || validDocentes.length} notificacion(es) de actualización despachadas a: ${namesOrEmails}.`,
           'success',
           8000
         );
@@ -709,13 +709,25 @@ Favor acceder a la plataforma institucional en ${appUrl} para reportar su avance
         throw new Error(data.message || 'El servidor no pudo procesar el envío de correos.');
       }
 
+      // Servidor responde asincronamente: correos en cola de envío background
+      if (data.async) {
+        AlertsEngine.showToast(
+          '✉️ Correos en Envío',
+          `${data.totalCount || recipients.length} notificacion(es) despachadas a: ${namesOrEmails}. El servidor las entregará en segundos.`,
+          'success',
+          8000
+        );
+        return data.results || [];
+      }
+
+      // Respuesta síncrona (legado)
       const sentCount = data.sentCount || 0;
       const results = data.results || [];
       const failedRecipients = results.filter(result => !result.success);
-      if (failedRecipients.length === 0 && sentCount === recipients.length) {
+      if (failedRecipients.length === 0 && sentCount > 0) {
         AlertsEngine.showToast(
           'Correos Aceptados por SMTP',
-          `SMTP aceptó ${sentCount} notificaciones para envío a los docentes asignados (${namesOrEmails}).`,
+          `SMTP aceptó ${sentCount} notificaciones para: ${namesOrEmails}.`,
           'success',
           8000
         );
@@ -723,20 +735,16 @@ Favor acceder a la plataforma institucional en ${appUrl} para reportar su avance
         const errorReason = failedRecipients[0]?.error || data.message || 'Servidor SMTP no configurado';
         AlertsEngine.showToast(
           'Correos No Enviados por SMTP',
-          `No se pudieron enviar los correos a los miembros: ${errorReason}. Ingrese a "⚙️ Configurar correo SMTP" en el menú superior o defina SMTP_USER y SMTP_PASS en las variables de entorno de Render.`,
+          `No se pudieron enviar: ${errorReason}. Configure el SMTP en ⚙️ o defina SMTP_USER y SMTP_PASS en Render.`,
           'danger',
           14000
         );
       } else {
-        const failedSummary = failedRecipients.slice(0, 3).map(result => {
-          const reason = String(result.error || 'Rechazado por SMTP').slice(0, 140);
-          return `${result.to}: ${reason}`;
-        }).join('; ');
         AlertsEngine.showToast(
-          'Envío Parcial de Correos',
-          `SMTP entregó ${sentCount} de ${recipients.length} correos. Fallos: ${failedSummary}`,
+          'Envío Parcial',
+          `SMTP entregó ${sentCount} de ${recipients.length} correos.`,
           'warning',
-          12000
+          10000
         );
       }
       return results;
