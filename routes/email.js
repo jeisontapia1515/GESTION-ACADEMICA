@@ -9,18 +9,24 @@ const path = require("path");
 const DATA_DIR = path.join(__dirname, "../data");
 const EMAILS_FILE = path.join(DATA_DIR, "emails.json");
 const CONFIG_FILE = path.join(DATA_DIR, "email_config.json");
-const LOGO_PATH = path.join(__dirname, "../img/logo.png");
+const LOGO_PATH = path.join(__dirname, "../img/logo_small.png");
 if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
 
 function getLogoAttachment() {
-  if (fs.existsSync(LOGO_PATH)) {
+  if (!fs.existsSync(LOGO_PATH)) return [];
+  try {
+    const base64 = fs.readFileSync(LOGO_PATH).toString("base64");
     return [{
       filename: "escudo-decanatura.png",
-      path: LOGO_PATH,
-      cid: "esfim_logo"
+      content: base64,
+      encoding: "base64",
+      cid: "esfim_logo",
+      contentDisposition: "inline"
     }];
+  } catch (e) {
+    console.warn("No se pudo incrustar el escudo en el correo:", e.message);
+    return [];
   }
-  return [];
 }
 
 function loadEmails() { try { return fs.existsSync(EMAILS_FILE) ? JSON.parse(fs.readFileSync(EMAILS_FILE, "utf8")) : []; } catch(e) { return []; } }
@@ -196,10 +202,12 @@ function getTransporterForAccount(accountCfg) {
       user: accountCfg.user,
       pass: accountCfg.pass
     },
-    connectionTimeout: 15000,
-    greetingTimeout: 15000,
-    socketTimeout: 35000,
-    pool: false, // pool: false evita desconexiones y sockets muertos en hosting cloud / Render
+    connectionTimeout: 15000,  // 15s para conectar
+    greetingTimeout: 15000,    // 15s para saludo SMTP
+    socketTimeout: 30000,     // 30s para operaciones de socket
+    pool: true,               // pool:true permite reutilizar conexiones en envíos masivos
+    maxConnections: 5,        // límite de conexiones simultáneas
+    maxMessages: 50,          // cerrar conexión después de 50 msgs
     tls: {
       rejectUnauthorized: false,
       minVersion: "TLSv1.2"
@@ -271,6 +279,75 @@ async function sendMailWithRetry(transporter, mailOptions, accountCfg) {
       if (fresh) transporter = fresh;
     }
   }
+}
+
+async function sendMailBatchParallel(transporter, recipients, accountCfg, type, metadata) {
+  // Envía múltiples correos en paralelo por lotes de 4 con delay mínimo entre lotes
+  const results = [];
+  const BATCH_SIZE = 4;
+  for (let i = 0; i < recipients.length; i += BATCH_SIZE) {
+    const batch = recipients.slice(i, i + BATCH_SIZE);
+    const batchResults = await Promise.all(batch.map(async (item) => {
+      const to = typeof item === 'string' ? item : item.to || item.email;
+      const toName = typeof item === 'object' ? (item.toName || item.name || to) : to;
+      const rawHtml = (typeof item === 'object' && item.html) || item.html;
+      const rawText = (typeof item === 'object' && item.text) || item.text;
+      const subject = (typeof item === 'object' && item.subject) || item.subject;
+      const sanitizedHtml = sanitizeAppUrl(rawHtml, null, accountCfg);
+      const sanitizedText = sanitizeAppUrl(rawText, null, accountCfg);
+
+      const emailRecord = {
+        id: "email-" + Date.now() + "-" + Math.random().toString(36).substring(2, 7),
+        to,
+        toName,
+        from: (accountCfg && (accountCfg.fromAddress || accountCfg.user)) || "decanatura@esfim.edu.co",
+        fromName: (accountCfg && accountCfg.fromName) || "Decanatura de Investigacion ESFIM",
+        senderAccount: accountCfg.key || 'decano',
+        subject,
+        html: sanitizedHtml,
+        text: sanitizedText,
+        type: type || "task_assignment",
+        metadata: metadata || {},
+        createdAt: new Date().toISOString(),
+        status: "simulated"
+      };
+
+      if (transporter) {
+        try {
+          const fromStr = getOptimalFrom(accountCfg);
+          const replyToStr = formatFrom(accountCfg.fromName, accountCfg.fromAddress || accountCfg.user);
+          const toStr = toName ? `"${String(toName).replace(/"/g, "")}" <${to.trim()}>` : to.trim();
+          const { info, from, usedAuthenticatedSender } = await sendMailWithRetry(transporter, {
+            from: fromStr,
+            replyTo: replyToStr,
+            to: toStr,
+            subject: emailRecord.subject,
+            html: emailRecord.html,
+            text: emailRecord.text,
+            attachments: getLogoAttachment()
+          }, accountCfg);
+          emailRecord.from = usedAuthenticatedSender ? accountCfg.user : fromStr;
+          emailRecord.status = "sent_smtp";
+          emailRecord.smtpMessage = `Aceptado por SMTP desde ${from} [${info.messageId}]`;
+          console.log(`[SMTP OK] Correo enviado a ${to} [${info.messageId}]`);
+        } catch (e) {
+          console.error(`[SMTP FAIL] Error enviando a ${to}:`, e.message);
+          emailRecord.status = "simulated";
+          emailRecord.smtpMessage = `Fallo SMTP: ${e.message} (buzon virtual ESFIM)`;
+        }
+      } else {
+        emailRecord.status = "simulated";
+        emailRecord.smtpMessage = `SMTP no configurado. Registrado en buzon virtual ESFIM.`;
+      }
+      return emailRecord;
+    }));
+    results.push(...batchResults);
+    // Delay mínimo entre lotes para no saturar el servidor
+    if (i + BATCH_SIZE < recipients.length) {
+      await new Promise(r => setTimeout(r, 100));
+    }
+  }
+  return results;
 }
 
 function resolveAccount(cfg, requestedAccount, user) {
@@ -635,72 +712,24 @@ router.post("/send-email-batch", protect, async (req, res) => {
   // Enviar correos en segundo plano sin bloquear la respuesta HTTP
   setImmediate(async () => {
     const t = getTransporterForAccount(targetCfg);
+    // Agregar key al accountCfg para que el batch paralelo pueda usarla
+    const accountWithKey = { ...targetCfg, key: resolved.key };
+
+    const emailRecords = await sendMailBatchParallel(
+      t,
+      validRecipients,
+      accountWithKey,
+      type,
+      metadata
+    );
+
     const emails = loadEmails();
-
-    for (let i = 0; i < validRecipients.length; i++) {
-      const item = validRecipients[i];
-      const to = typeof item === 'string' ? item : item.to || item.email;
-      const toName = typeof item === 'object' ? (item.toName || item.name || to) : to;
-
-      const rawHtml = (typeof item === 'object' && item.html) || html;
-      const rawText = (typeof item === 'object' && item.text) || text;
-      const sanitizedHtml = sanitizeAppUrl(rawHtml, null, cfg);
-      const sanitizedText = sanitizeAppUrl(rawText, null, cfg);
-
-      const emailRecord = {
-        id: "email-" + Date.now() + "-" + Math.random().toString(36).substring(2, 7),
-        to,
-        toName,
-        from: (targetCfg && (targetCfg.fromAddress || targetCfg.user)) || "decanatura@esfim.edu.co",
-        fromName: (targetCfg && targetCfg.fromName) || "Decanatura de Investigacion ESFIM",
-        senderAccount: resolved.key,
-        subject: (typeof item === 'object' && item.subject) || subject,
-        html: sanitizedHtml,
-        text: sanitizedText,
-        type: type || "task_assignment",
-        metadata: metadata || {},
-        createdAt: new Date().toISOString(),
-        status: "simulated"
-      };
-
-      if (t) {
-        try {
-          const fromStr = getOptimalFrom(targetCfg);
-          const replyToStr = formatFrom(targetCfg.fromName, targetCfg.fromAddress || targetCfg.user);
-          const toStr = toName ? `"${String(toName).replace(/"/g, "")}" <${to.trim()}>` : to.trim();
-          const { info, from, usedAuthenticatedSender } = await sendMailWithRetry(t, {
-            from: fromStr,
-            replyTo: replyToStr,
-            to: toStr,
-            subject: emailRecord.subject,
-            html: emailRecord.html,
-            text: emailRecord.text,
-            attachments: getLogoAttachment()
-          }, targetCfg);
-          emailRecord.from = usedAuthenticatedSender ? targetCfg.user : fromStr;
-          emailRecord.status = "sent_smtp";
-          emailRecord.smtpMessage = `Aceptado por SMTP desde ${from} [${info.messageId}]`;
-          console.log(`[SMTP OK] Correo enviado a ${to} [${info.messageId}]`);
-        } catch (e) {
-          console.error(`[SMTP FAIL] Error enviando a ${to}:`, e.message);
-          emailRecord.status = "simulated";
-          emailRecord.smtpMessage = `Fallo SMTP (${resolved.key}): ${e.message} (buzon virtual ESFIM)`;
-        }
-      } else {
-        emailRecord.status = "simulated";
-        emailRecord.smtpMessage = `SMTP (${resolved.key}) no configurado. Registrado en buzon virtual ESFIM.`;
-        console.warn(`[SMTP] Sin configuracion SMTP para ${resolved.key}. Correo solo en buzon virtual.`);
-      }
-
-      emails.unshift(emailRecord);
-
-      if (i < validRecipients.length - 1 && t) {
-        await new Promise(r => setTimeout(r, 700));
-      }
-    }
-
+    emailRecords.forEach(er => emails.unshift(er));
     saveEmails(emails);
-    console.log(`[SMTP] Batch completado: ${validRecipients.length} correo(s) procesados para ${resolved.key}.`);
+
+    const sentCount = emailRecords.filter(er => er.status === "sent_smtp").length;
+    const failedCount = emailRecords.filter(er => er.status === "simulated").length;
+    console.log(`[SMTP] Batch completado: ${sentCount} enviados, ${failedCount} fallidos de ${validRecipients.length} para ${resolved.key}.`);
   });
 });
 
