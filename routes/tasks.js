@@ -125,12 +125,24 @@ router.put("/:id/archive", protect, async (req, res) => {
   }
 });
 
-// PUT /api/tasks/:id - Update task (progress, comments, checklist, status)
+// PUT /api/tasks/:id - Update task (admins can edit full task details; employees update progress, comments, checklist)
 router.put("/:id", protect, async (req, res) => {
   try {
     const updateData = { ...req.body, updatedAt: new Date() };
     delete updateData._id;
     delete updateData.id;
+
+    // Solo directivos (admin: Decano o Gestor) pueden modificar la definición central de la tarea
+    if (req.user.role !== "admin") {
+      delete updateData.title;
+      delete updateData.description;
+      delete updateData.dueDate;
+      delete updateData.assignedTo;
+      delete updateData.area;
+      delete updateData.isDraft;
+      delete updateData.createdBy;
+    }
+
     if (updateData.priority) updateData.priority = String(updateData.priority).toLowerCase().trim();
 
     if (updateData.status === "completado" || updateData.progress === 100) {
@@ -146,7 +158,7 @@ router.put("/:id", protect, async (req, res) => {
     res.json({ success: true, task: obj });
   } catch (err) {
     console.error("Error al actualizar tarea:", err);
-    res.status(500).json({ success: false, message: "Error al actualizar tarea." });
+    res.status(500).json({ success: false, message: "Error al actualizar tarea: " + err.message });
   }
 });
 

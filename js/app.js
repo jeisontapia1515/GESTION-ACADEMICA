@@ -697,6 +697,15 @@ const App = {
         };
         actionsFooter.appendChild(btnDelete);
       } else {
+        const btnEdit = document.createElement('button');
+        btnEdit.className = 'btn btn-outline-primary btn-sm';
+        btnEdit.innerHTML = '✏️ Editar / Modificar Actividad';
+        btnEdit.title = 'Modificar título, descripción, docentes asignados, entregables o fechas';
+        btnEdit.onclick = () => {
+          AdminModule.openEditTaskModal(task.id);
+        };
+        actionsFooter.appendChild(btnEdit);
+
         const btnReminder = document.createElement('button');
         btnReminder.className = 'btn btn-secondary btn-sm';
         btnReminder.innerHTML = '⏰ Recordatorio Decano';

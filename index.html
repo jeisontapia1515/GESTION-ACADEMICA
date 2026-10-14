@@ -200,8 +200,8 @@
           <p>Supervisión de compromisos por área (Formativa, Aplicada, Editorial, Doctrina y Decanatura), control de % de avance y resolución de novedades.</p>
         </div>
         <div class="header-actions">
-          <button class="btn btn-secondary" onclick="AdminModule.openCreateEmployeeModal('directory')" title="Directorio y Administración de Docentes">
-            👥 Gestión de Docentes
+          <button class="btn btn-secondary" onclick="AdminModule.openCreateEmployeeModal('directory')" title="Verificación, Carga Académica y Gestión de Docentes">
+            👥 Verificación y Gestión Docente
           </button>
           <button class="btn btn-warning" onclick="AdminModule.openPurgeCompletedModal()" title="Depurar y eliminar compromisos cumplidos para optimizar espacio en base de datos">
             🧹 Depurar Cumplidas
@@ -218,29 +218,7 @@
       <!-- Institutional KPIs Grid -->
       <div class="kpi-grid" id="adminKPIs"></div>
 
-      <!-- Planta de Docentes Investigadores de la Decanatura -->
-      <section class="docentes-section" id="adminDocentesSection">
-        <div class="docentes-section-header">
-          <div class="docentes-header-titles">
-            <h3 class="docentes-title">
-              👥 Docentes Investigadores
-              <span id="adminDocentesCountBadge" class="badge badge-info" style="font-size:0.75rem; padding: 2px 8px;">Cargando...</span>
-            </h3>
-            <p class="docentes-subtitle">
-              Planta docente activa registrada en MongoDB. Supervisa su carga académica, tareas delegadas y despacha notificaciones.
-            </p>
-          </div>
-          <div class="docentes-header-actions">
-            <button type="button" class="btn btn-sm btn-secondary" onclick="AdminModule.openCreateEmployeeModal('directory')" title="Directorio completo y administración de docentes">
-              📋 Directorio Nómina
-            </button>
-            <button type="button" class="btn btn-sm btn-primary" onclick="AdminModule.openCreateEmployeeModal('register')" title="Registrar nuevo docente investigador">
-              ➕ Registrar Docente
-            </button>
-          </div>
-        </div>
-        <div id="adminDocentesGrid" class="docentes-cards-grid"></div>
-      </section>
+      <!-- tasks-section directo para máxima visualización de tareas asignadas -->
 
       <!-- Tasks Section -->
       <div class="tasks-section">
@@ -534,6 +512,129 @@
     </div>
   </div>
 
+  <!-- 1.8 MODAL: EDITAR / CORREGIR ACTIVIDAD ACADÉMICA (Decanatura y Gestor) -->
+  <div id="editTaskModal" class="modal-overlay">
+    <div class="modal-dialog">
+      <div class="modal-header">
+        <h3>✏️ Editar / Corregir Actividad Académica</h3>
+        <button class="btn-close-modal">&times;</button>
+      </div>
+      <form id="editTaskForm" onsubmit="AdminModule.handleEditTaskSubmit(event)">
+        <input type="hidden" id="editTaskId" />
+        <div class="modal-body">
+          <div class="form-group">
+            <label for="editTaskAreaSelect">Área Estratégica de la Decanatura *</label>
+            <select id="editTaskAreaSelect" class="form-control" onchange="AdminModule.onEditTaskAreaSelectChange(this.value)" required>
+              <option value="formativa">🔬 1. Investigación Formativa (Semilleros de Investigación)</option>
+              <option value="aplicada">🚀 2. Investigación Aplicada (Formulación de Proyectos y Grupos)</option>
+              <option value="editorial">📚 3. Sello Editorial (Elaboración y Publicación de Libros y Revistas)</option>
+              <option value="doctrina">📜 4. Doctrina (Manuales y Cartillas Doctrinarias)</option>
+              <option value="decanatura">🏛️ 5. Actividades de Decanatura (Plenarias / Todos los Miembros Involucrados)</option>
+            </select>
+          </div>
+
+          <div class="form-group">
+            <label for="editTaskTitleInput">Título de la Tarea / Compromiso Académico *</label>
+            <input type="text" id="editTaskTitleInput" class="form-control" required placeholder="Ej. Plan Operativo o Plenaria General..." />
+          </div>
+
+          <div class="form-group">
+            <label for="editTaskDescInput">Descripción, Alcance y Objetivos *</label>
+            <textarea id="editTaskDescInput" class="form-control" rows="3" required placeholder="Detalla los requerimientos específicos..."></textarea>
+          </div>
+
+          <!-- Multi-Docente Assignees Selector for Edit -->
+          <div class="form-group" id="editAssigneesFormGroup">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.35rem; flex-wrap: wrap; gap: 0.5rem;">
+              <label style="margin: 0; font-weight: 600;">Docentes Involucrados / Responsables *</label>
+              <div style="display: flex; gap: 0.35rem;">
+                <button type="button" class="btn btn-xs btn-outline-primary" onclick="AdminModule.selectAllEditAssignees(true)">☑️ Involucrar a Todos</button>
+                <button type="button" class="btn btn-xs btn-outline-secondary" onclick="AdminModule.selectAllEditAssignees(false)">Deseleccionar</button>
+              </div>
+            </div>
+
+            <!-- Checkbox List of Registered Teachers -->
+            <div id="editAssigneesCheckboxContainer" style="max-height: 145px; overflow-y: auto; border: 1px solid var(--border); border-radius: 8px; padding: 0.5rem; background: var(--surface-2); display: flex; flex-direction: column; gap: 0.35rem;">
+              <!-- Populated dynamically via AdminModule.populateEditAssigneesChecklist() -->
+            </div>
+
+            <!-- Custom Additional Emails Input -->
+            <div style="margin-top: 0.5rem;">
+              <label for="editCustomAssigneeEmailsInput" style="font-size: 0.8rem; color: var(--text-muted); font-weight: 500; margin-bottom: 0.2rem; display: block;">
+                ➕ Añadir otros correos docentes adicionales (separados por coma):
+              </label>
+              <input type="text" id="editCustomAssigneeEmailsInput" class="form-control" placeholder="ej. docente1@esfim.edu.co, docente2@esfim.edu.co" oninput="AdminModule.updateEditAssigneesSummary()" />
+            </div>
+
+            <!-- Live Summary -->
+            <div id="editAssigneesSummaryBox" style="margin-top: 0.4rem; padding: 0.5rem 0.75rem; background: rgba(37, 99, 235, 0.08); border: 1px solid rgba(37, 99, 235, 0.25); border-radius: 6px; font-size: 0.8rem;">
+              <div style="color: #2563eb; font-weight: 600; display: flex; align-items: center; justify-content: space-between;">
+                <span>👥 Responsables asignados:</span>
+                <span id="editAssigneesCountBadge" class="badge badge-info" style="font-size: 0.72rem;">0 seleccionados</span>
+              </div>
+              <div id="editAssigneesListPreview" style="color: var(--text-main); font-size: 0.78rem; margin-top: 0.25rem; word-break: break-all;">
+                Ningún docente seleccionado.
+              </div>
+            </div>
+          </div>
+
+          <div class="form-row">
+            <div class="form-group" style="flex: 1;">
+              <label for="editTaskPrioritySelect">Nivel de Prioridad *</label>
+              <select id="editTaskPrioritySelect" class="form-control">
+                <option value="urgente">🚨 Urgente</option>
+                <option value="alta">🔥 Alta</option>
+                <option value="media">⚡ Media</option>
+                <option value="baja">📋 Baja</option>
+              </select>
+            </div>
+            <div class="form-group" style="flex: 1;">
+              <label for="editTaskStatusSelect">Estado del Compromiso</label>
+              <select id="editTaskStatusSelect" class="form-control">
+                <option value="pendiente">⏳ Pendiente</option>
+                <option value="en_progreso">⚡ En Progreso</option>
+                <option value="revision_pendiente">📤 En Revisión</option>
+                <option value="completado">✅ Completado</option>
+                <option value="bloqueado">🛑 Con Dificultad</option>
+                <option value="borrador">📝 Borrador</option>
+              </select>
+            </div>
+            <div class="form-group" style="flex: 1.2;">
+              <label for="editTaskDueDateInput">Fecha y Hora Límite *</label>
+              <input type="datetime-local" id="editTaskDueDateInput" class="form-control" required />
+            </div>
+          </div>
+
+          <!-- Dynamic Checklist of Deliverables -->
+          <div class="form-group">
+            <label>Entregables Requeridos (Checklist)</label>
+            <div id="editChecklistItemsContainer" class="checklist-builder"></div>
+            <button type="button" class="btn btn-sm btn-secondary" onclick="AdminModule.addEditChecklistItemInput()" style="margin-top: 0.5rem; align-self: flex-start;">
+              + Añadir Entregable
+            </button>
+          </div>
+
+          <!-- Notification option -->
+          <div class="form-group" style="background: rgba(37, 99, 235, 0.06); border: 1px solid rgba(37, 99, 235, 0.25); border-radius: 8px; padding: 0.65rem 0.85rem; margin-top: 0.5rem;">
+            <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer; margin: 0; font-size: 0.85rem; font-weight: 600; color: var(--text-main);">
+              <input type="checkbox" id="editTaskNotifyEmailCheckbox" checked style="width: 17px; height: 17px;" />
+              <span>📧 Notificar por correo institucional a los docentes sobre los cambios corregidos</span>
+            </label>
+            <span style="display: block; font-size: 0.75rem; color: var(--text-muted); margin-left: 1.6rem; margin-top: 2px;">
+              Despacha un correo informando a los asignados que la Decanatura actualizó la actividad o sus fechas de entrega.
+            </span>
+          </div>
+        </div>
+        <div class="modal-footer" style="display: flex; justify-content: space-between; gap: 0.5rem;">
+          <button type="button" class="btn btn-secondary btn-modal-cancel">Cancelar</button>
+          <button type="submit" class="btn btn-primary" id="btnSubmitEditTask">
+            💾 Guardar Cambios y Actualizar
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
   <!-- 2. MODAL: ENVIAR RECORDATORIO FORMAL (Decanatura) -->
   <div id="reminderModal" class="modal-overlay">
     <div class="modal-dialog">
@@ -731,17 +832,17 @@
   <div id="createEmployeeModal" class="modal-overlay">
     <div class="modal-dialog lg">
       <div class="modal-header">
-        <h3 style="margin:0;">👥 Nómina y Gestión de Docentes Investigadores</h3>
+        <h3 style="margin:0;">👥 Verificación y Nómina de Docentes Investigadores</h3>
         <button type="button" class="btn-icon btn-modal-cancel" title="Cerrar">&times;</button>
       </div>
 
       <!-- Tab Buttons -->
       <div style="display:flex; gap:0.5rem; padding:0.75rem 1.5rem 0; border-bottom:1px solid var(--border);">
+        <button type="button" class="btn btn-sm btn-secondary doc-modal-tab-btn" data-tab="directory" onclick="AdminModule.switchDocenteTab('directory')">
+          🔍 Verificación y Carga Docente
+        </button>
         <button type="button" class="btn btn-sm btn-secondary doc-modal-tab-btn active" data-tab="register" onclick="AdminModule.switchDocenteTab('register')">
           ➕ Registrar Nuevo Docente
-        </button>
-        <button type="button" class="btn btn-sm btn-secondary doc-modal-tab-btn" data-tab="directory" onclick="AdminModule.switchDocenteTab('directory')">
-          📋 Directorio y Retiro de Docentes
         </button>
       </div>
 

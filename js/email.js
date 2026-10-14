@@ -460,8 +460,9 @@ const EmailModule = {
     return data.results || [];
   },
 
-  // Construye el HTML y texto formal del correo para asignación de tareas
-  buildTaskEmailContent(task, docente) {
+  // Construye el HTML y texto formal del correo para asignación o modificación de tareas
+  buildTaskEmailContent(task, docente, options = {}) {
+    const isUpdate = Boolean(options && options.isUpdate);
     const appUrl = this.getAppUrl();
     const areaObj = window.DECANATURA_AREAS && task.area ? window.DECANATURA_AREAS[task.area] : null;
     const areaName = areaObj ? areaObj.name : 'Investigación ESFIM';
@@ -548,8 +549,15 @@ const EmailModule = {
           <div class="body" style="padding:22px 26px; font-size:14px; line-height:1.6; background-color:#ffffff;">
             <div class="greeting" style="font-size:15px; font-weight:600; color:#0f2942; margin-bottom:12px;">Estimado(a) ${docName},</div>
             <p style="margin:0 0 14px; font-size:13.5px; color:#334155; line-height:1.6;">
-              Por disposición de la Jefatura de la <strong>Decanatura de Investigación - ESFIM</strong>, se le ha asignado y delegado formalmente el siguiente compromiso académico e investigativo:
+              ${isUpdate
+                ? 'Por disposición de la Jefatura de la <strong>Decanatura de Investigación - ESFIM</strong>, se ha <strong>actualizado y corregido</strong> el siguiente compromiso académico e investigativo asignado a su cargo:'
+                : 'Por disposición de la Jefatura de la <strong>Decanatura de Investigación - ESFIM</strong>, se le ha asignado y delegado formalmente el siguiente compromiso académico e investigativo:'}
             </p>
+            ${isUpdate ? `
+              <div style="background-color:#eff6ff; border:1px solid #bfdbfe; color:#1e40af; border-radius:6px; padding:10px 14px; margin-bottom:12px; font-size:12.5px; font-weight:600;">
+                📢 <strong>Novedad de Decanatura:</strong> Los detalles, objetivos, entregables o fechas de esta actividad han sido actualizados en la plataforma oficial.
+              </div>
+            ` : ''}
             
             <div class="task-box" style="background-color:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; padding:16px; margin:14px 0;">
               <div class="task-title" style="font-size:15.5px; font-weight:700; color:#0f2942; margin-bottom:6px;">${task.title}</div>
@@ -598,11 +606,11 @@ const EmailModule = {
 
     const text = `
 ARMADA NACIONAL DE COLOMBIA - ESCUELA DE FORMACIÓN DE INFANTERÍA DE MARINA (ESFIM)
-Decanatura de Investigación - Notificación Oficial de Tarea Delegada
+Decanatura de Investigación - Notificación Oficial de Tarea ${isUpdate ? 'Actualizada / Corregida' : 'Delegada'}
 
 Estimado(a) ${docName},
 
-Por directriz de la Jefatura se le ha asignado la siguiente tarea:
+Por directriz de la Jefatura se ha ${isUpdate ? 'actualizado y corregido el compromiso académico' : 'asignado la siguiente tarea'}:
 - TÍTULO: ${task.title}
 - ÁREA: ${areaName}
 - PRIORIDAD: ${priorityObj.label}
@@ -613,6 +621,56 @@ Favor acceder a la plataforma institucional en ${appUrl} para reportar su avance
     `.trim();
 
     return { areaName, dueDateFormatted, html, text };
+  },
+
+  // Despacha notificaciones de actualización/corrección a los docentes involucrados
+  async notifyTaskUpdatedMulti(task, docentes) {
+    if (!Array.isArray(docentes)) docentes = [docentes].filter(Boolean);
+    if (docentes.length === 0) return [];
+
+    const validDocentes = docentes.filter(d => d && d.email && d.email.includes('@'));
+    if (validDocentes.length === 0) return [];
+
+    const namesOrEmails = validDocentes.map(d => d.name || d.email).join(', ');
+    const recipients = validDocentes.map(doc => {
+      const content = this.buildTaskEmailContent(task, doc, { isUpdate: true });
+      return {
+        to: doc.email.trim(),
+        toName: doc.name || doc.email,
+        subject: `📢 [ACTUALIZACIÓN - ESFIM ${content.areaName}] ${task.title}`,
+        html: content.html,
+        text: content.text
+      };
+    });
+
+    try {
+      const res = await fetch('/api/send-email-batch', {
+        method: 'POST',
+        headers: this.getHeaders(),
+        body: JSON.stringify({
+          recipients,
+          type: 'task_assignment',
+          metadata: { taskId: task.id, area: task.area, priority: task.priority, isUpdate: true }
+        })
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        throw new Error(data.message || 'El servidor no pudo procesar el envío de correos.');
+      }
+      const sentCount = data.sentCount || 0;
+      if (sentCount > 0) {
+        AlertsEngine.showToast(
+          'Correos de Actualización Enviados',
+          `Se enviaron ${sentCount} notificaciones de actualización por correo a: ${namesOrEmails}.`,
+          'success',
+          8000
+        );
+      }
+      return data.results || [];
+    } catch (e) {
+      console.warn('Error al despachar correos de actualización:', e);
+      return [];
+    }
   },
 
   // Despacha notificaciones a múltiples docentes mediante /api/send-email-batch

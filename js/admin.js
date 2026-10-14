@@ -137,6 +137,11 @@ const AdminModule = {
     this.renderTasks(window.appStore.getTasks(), window.appStore.getEmployees());
   },
 
+  filterAndCloseDocenteModal(docenteId) {
+    document.getElementById('createEmployeeModal')?.classList.remove('active');
+    this.filterByDocente(docenteId);
+  },
+
   openCreateModalForDocente(docenteId) {
     this.openCreateModal();
     setTimeout(() => {
@@ -497,6 +502,9 @@ const AdminModule = {
               ⏰ Recordatorio
             </button>
           `)}
+          <button class="btn btn-sm btn-outline-primary" onclick="AdminModule.openEditTaskModal('${task.id}')" title="Editar / Corregir actividad">
+            ✏️ Editar
+          </button>
           <button class="btn btn-primary btn-sm" onclick="App.openTaskDetailModal('${task.id}')" style="margin-left:auto;">
             Detalles (${(task.comments || []).length})
           </button>
@@ -594,6 +602,7 @@ const AdminModule = {
                   ` : `
                     <button class="btn btn-sm btn-secondary" onclick="AdminModule.openReminderModal('${t.id}')" title="Enviar recordatorio oficial">⏰</button>
                   `)}
+                  <button class="btn btn-sm btn-outline-primary" onclick="AdminModule.openEditTaskModal('${t.id}')" title="Editar / Corregir actividad">✏️</button>
                   <button class="btn btn-sm btn-primary" onclick="App.openTaskDetailModal('${t.id}')">Ver</button>
                 </td>
               </tr>
@@ -1449,6 +1458,10 @@ const AdminModule = {
         const assignees = Array.isArray(t.assignedTo) ? t.assignedTo : [t.assignedTo];
         return t.assignedTo === 'all' || assignees.some(a => matchIds.includes(String(typeof a === 'object' ? (a.id || a._id || a.email || '') : a).toLowerCase()));
       });
+      const pendingCount = empTasks.filter(t => t.status === 'pendiente' || t.status === 'en_progreso').length;
+      const completedCount = empTasks.filter(t => t.status === 'completado').length;
+      const issuesCount = empTasks.filter(t => t.issueReport && t.issueReport.status === 'revision_pendiente').length;
+
       const areaObj = emp.area && window.DECANATURA_AREAS[emp.area] ? window.DECANATURA_AREAS[emp.area] : null;
       const areaBadge = areaObj ? areaObj.name : (emp.department || 'Investigación');
 
@@ -1456,23 +1469,29 @@ const AdminModule = {
         <div style="display:flex; justify-content:space-between; align-items:center; background:var(--surface-2); border:1px solid var(--border); border-radius:8px; padding:0.85rem 1rem; margin-bottom:0.6rem; gap:0.75rem; flex-wrap:wrap;">
           <div style="display:flex; align-items:center; gap:0.75rem;">
             <div class="docente-avatar-wrap" onclick="AdminModule.triggerDocentePhotoUpload('${emp.id || emp._id}')" title="Clic para subir o cambiar foto de ${emp.name}">
-              ${this.getAvatarHtml(emp.avatar, emp.name ? emp.name.slice(0, 2).toUpperCase() : 'DC', '40px')}
+              ${this.getAvatarHtml(emp.avatar, emp.name ? emp.name.slice(0, 2).toUpperCase() : 'DC', '44px')}
               <span class="avatar-camera-pill" style="position:absolute; bottom:-2px; right:-2px; width:16px; height:16px; background:var(--primary); color:#fff; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:0.58rem; border:1.5px solid var(--surface-2); box-shadow:0 1px 3px rgba(0,0,0,0.35);" title="Cambiar foto">📷</span>
             </div>
             <div>
               <div style="font-weight:700; color:var(--text-main); font-size:0.95rem;">${emp.name}</div>
               <div style="font-size:0.82rem; color:var(--text-muted); font-family:var(--font-mono);">${emp.email}</div>
-              <div style="font-size:0.75rem; color:var(--primary); margin-top:0.25rem;">
-                📌 Área: <strong>${areaBadge}</strong> • <span style="color:var(--text-muted);">${empTasks.length} compromiso(s) asignado(s)</span>
+              <div style="display:flex; gap:0.4rem; align-items:center; margin-top:0.35rem; flex-wrap:wrap;">
+                <span class="badge ${areaObj ? areaObj.badgeClass : 'badge-area-formativa'}" style="font-size:0.7rem; padding:1px 6px;">${areaObj ? areaObj.icon : '🏛️'} ${areaBadge}</span>
+                <span style="font-size:0.75rem; color:var(--accent-cyan); font-weight:600;">⚡ ${pendingCount} en curso</span>
+                <span style="font-size:0.75rem; color:var(--success); font-weight:600;">✅ ${completedCount} cumplidos</span>
+                ${issuesCount > 0 ? `<span style="font-size:0.75rem; color:#d946ef; font-weight:700;">🛑 ${issuesCount} novedad</span>` : ''}
               </div>
             </div>
           </div>
           <div id="docenteActionBox-${emp.id}" style="display:flex; gap:0.4rem; align-items:center; flex-wrap:wrap;">
+            <button type="button" class="btn btn-sm btn-primary" onclick="AdminModule.filterAndCloseDocenteModal('${emp.id || emp._id}')" title="Ver y filtrar todas las tareas de este docente en el panel" style="font-size:0.75rem; padding:0.35rem 0.65rem;">
+              🔍 Ver Tareas (${empTasks.length})
+            </button>
             <button type="button" class="btn btn-sm btn-secondary" onclick="AdminModule.triggerDocentePhotoUpload('${emp.id || emp._id}')" title="Subir o cambiar foto de este docente" style="font-size:0.75rem; padding:0.35rem 0.65rem;">
-              📷 Cambiar Foto
+              📷 Foto
             </button>
             <button type="button" class="btn btn-sm btn-danger" onclick="AdminModule.askDeleteEmployee('${emp.id}')" title="Retirar docente de la Decanatura" style="font-size:0.75rem; padding:0.35rem 0.75rem;">
-              🗑️ Retirar Docente
+              🗑️ Retirar
             </button>
           </div>
         </div>
@@ -1725,6 +1744,289 @@ const AdminModule = {
 
     this.render();
     this.renderEmployeesInModal();
+  },
+
+  // =============================================
+  // ===  EDITAR / CORREGIR ACTIVIDAD ACADÉMICA ===
+  // =============================================
+
+  openEditTaskModal(taskId) {
+    const task = window.appStore.getTaskById(taskId);
+    if (!task) return;
+
+    // Cerrar modal de detalle si está abierto
+    document.getElementById('taskDetailModal')?.classList.remove('active');
+
+    const modal = document.getElementById('editTaskModal');
+    if (!modal) return;
+
+    // Rellenar campos con datos actuales de la tarea
+    document.getElementById('editTaskId').value = task.id || task._id;
+    document.getElementById('editTaskTitleInput').value = task.title || '';
+    document.getElementById('editTaskDescInput').value = task.description || '';
+    document.getElementById('editTaskAreaSelect').value = task.area || 'formativa';
+
+    const priorityVal = String(task.priority || 'alta').toLowerCase().trim();
+    const prioritySelect = document.getElementById('editTaskPrioritySelect');
+    if (prioritySelect) {
+      const mapped = { urgent: 'urgente', high: 'alta', medium: 'media', low: 'baja' };
+      prioritySelect.value = mapped[priorityVal] || priorityVal || 'alta';
+    }
+
+    const statusSelect = document.getElementById('editTaskStatusSelect');
+    if (statusSelect) statusSelect.value = task.status || 'pendiente';
+
+    // Fecha límite
+    if (task.dueDate) {
+      try {
+        const d = new Date(task.dueDate);
+        const pad = (n) => String(n).padStart(2, '0');
+        document.getElementById('editTaskDueDateInput').value =
+          `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+      } catch (e) {
+        document.getElementById('editTaskDueDateInput').value = '';
+      }
+    }
+
+    // Checklist
+    const checklistContainer = document.getElementById('editChecklistItemsContainer');
+    if (checklistContainer) {
+      if (task.checklist && task.checklist.length > 0) {
+        checklistContainer.innerHTML = task.checklist.map((item, idx) => `
+          <div class="checklist-item-row">
+            <input type="text" class="form-control" value="${(item.text || '').replace(/"/g, '&quot;')}" placeholder="Entregable ${idx + 1}..." />
+            <button type="button" class="btn btn-sm btn-secondary" onclick="this.parentElement.remove()">✕</button>
+          </div>
+        `).join('');
+      } else {
+        checklistContainer.innerHTML = `
+          <div class="checklist-item-row">
+            <input type="text" class="form-control" placeholder="Entregable 1: Ej. Documento de avance técnico..." />
+            <button type="button" class="btn btn-sm btn-secondary" onclick="this.parentElement.remove()">✕</button>
+          </div>
+        `;
+      }
+    }
+
+    // Rellenar la checklist de docentes y marcar los asignados actualmente
+    this.populateEditAssigneesChecklist(task);
+
+    modal.classList.add('active');
+  },
+
+  populateEditAssigneesChecklist(task) {
+    const container = document.getElementById('editAssigneesCheckboxContainer');
+    if (!container) return;
+    const employees = window.appStore.getEmployees().filter(u => u.isActive !== false);
+
+    // Resolver IDs asignados actuales
+    let currentAssignedIds = [];
+    if (task.assignedTo === 'all') {
+      currentAssignedIds = employees.map(e => e.id || e._id);
+    } else if (Array.isArray(task.assignedTo)) {
+      currentAssignedIds = task.assignedTo.map(a => {
+        if (typeof a === 'object' && a) return a.id || a._id || a.email || '';
+        return String(a);
+      });
+    } else if (task.assignedTo) {
+      currentAssignedIds = [typeof task.assignedTo === 'object' ? (task.assignedTo.id || task.assignedTo._id || '') : String(task.assignedTo)];
+    }
+    const assignedSet = new Set(currentAssignedIds.map(s => String(s).toLowerCase()));
+
+    if (employees.length === 0) {
+      container.innerHTML = `<div style="padding:1rem; text-align:center; color:var(--text-muted); font-size:0.85rem;">No hay docentes registrados aún.</div>`;
+      this.updateEditAssigneesSummary();
+      return;
+    }
+
+    container.innerHTML = employees.map(emp => {
+      const uId = emp.id || emp._id;
+      const isChecked = assignedSet.has(String(uId).toLowerCase()) || assignedSet.has(String(emp.email || '').toLowerCase());
+      const areaObj = emp.area && window.DECANATURA_AREAS[emp.area] ? window.DECANATURA_AREAS[emp.area] : null;
+      const areaBadge = areaObj ? `<span class="badge ${areaObj.badgeClass}" style="font-size:0.65rem; padding:1px 6px;">${areaObj.icon} ${areaObj.name}</span>` : '';
+      return `
+        <label class="assignee-checkbox-row" style="display:flex; align-items:center; gap:0.5rem; padding:0.35rem 0.5rem; border-radius:6px; background:var(--surface-1); cursor:pointer; font-size:0.83rem; transition:background 0.15s; border:1px solid transparent;">
+          <input type="checkbox" name="editAssigneeCheckbox" value="${uId}" data-email="${emp.email}" data-name="${emp.name}" ${isChecked ? 'checked' : ''} onchange="AdminModule.updateEditAssigneesSummary()" style="cursor:pointer; width:16px; height:16px;" />
+          <span style="font-weight:600;">${emp.name}</span>
+          <span style="color:var(--text-muted); font-size:0.78rem;">(${emp.email})</span>
+          ${areaBadge}
+        </label>
+      `;
+    }).join('');
+
+    this.updateEditAssigneesSummary();
+  },
+
+  selectAllEditAssignees(selectAll) {
+    document.querySelectorAll('input[name="editAssigneeCheckbox"]').forEach(cb => {
+      cb.checked = selectAll;
+    });
+    this.updateEditAssigneesSummary();
+  },
+
+  updateEditAssigneesSummary() {
+    const checkboxes = document.querySelectorAll('input[name="editAssigneeCheckbox"]:checked');
+    const customInput = document.getElementById('editCustomAssigneeEmailsInput');
+    const customEmails = (customInput ? customInput.value : '')
+      .split(/[\s,;]+/)
+      .map(e => e.trim())
+      .filter(e => e.includes('@'));
+
+    const total = checkboxes.length + customEmails.length;
+    const badge = document.getElementById('editAssigneesCountBadge');
+    const preview = document.getElementById('editAssigneesListPreview');
+
+    if (badge) badge.textContent = `${total} seleccionado${total !== 1 ? 's' : ''}`;
+    if (preview) {
+      if (total === 0) {
+        preview.textContent = 'Ningún docente seleccionado.';
+      } else {
+        const selectedDocentes = Array.from(checkboxes).map(cb => ({
+          name: cb.dataset.name || 'Docente',
+          email: cb.dataset.email || cb.value
+        }));
+        const allNamesOrEmails = [
+          ...selectedDocentes.map(d => `<strong>${d.name}</strong> (<code>${d.email}</code>)`),
+          ...customEmails.map(e => `<code>${e}</code>`)
+        ];
+        preview.innerHTML = allNamesOrEmails.join(', ');
+      }
+    }
+  },
+
+  addEditChecklistItemInput() {
+    const container = document.getElementById('editChecklistItemsContainer');
+    if (!container) return;
+    const row = document.createElement('div');
+    row.className = 'checklist-item-row';
+    row.innerHTML = `
+      <input type="text" class="form-control" placeholder="Nuevo entregable académico requerido..." />
+      <button type="button" class="btn btn-sm btn-secondary" onclick="this.parentElement.remove()">✕</button>
+    `;
+    container.appendChild(row);
+  },
+
+  onEditTaskAreaSelectChange(value) {
+    // Placeholder para lógica futura de cambio de área en edición
+  },
+
+  async handleEditTaskSubmit(e) {
+    e.preventDefault();
+
+    const taskId = document.getElementById('editTaskId').value;
+    const title = document.getElementById('editTaskTitleInput').value.trim();
+    const description = document.getElementById('editTaskDescInput').value.trim();
+    const area = document.getElementById('editTaskAreaSelect')?.value || 'formativa';
+    const priority = document.getElementById('editTaskPrioritySelect')?.value || 'alta';
+    const status = document.getElementById('editTaskStatusSelect')?.value || 'pendiente';
+    const dueDate = document.getElementById('editTaskDueDateInput')?.value;
+    const shouldNotify = document.getElementById('editTaskNotifyEmailCheckbox')?.checked;
+
+    if (!title || !description || !dueDate) {
+      AlertsEngine.showToast('Datos Incompletos', 'Complete el título, descripción y fecha límite para guardar los cambios.', 'warning');
+      return;
+    }
+
+    // Recopilar docentes seleccionados
+    const checkboxes = document.querySelectorAll('input[name="editAssigneeCheckbox"]:checked');
+    const customEmailsInput = document.getElementById('editCustomAssigneeEmailsInput');
+    const targetDocentes = [];
+    const assignedIds = [];
+
+    checkboxes.forEach(cb => {
+      let u = window.appStore.getUserById(cb.value);
+      if (!u && cb.dataset.email) u = window.appStore.getUserById(cb.dataset.email);
+      const uId = (u && (u.id || u._id)) || cb.value;
+      const rawEmail = (u && u.email) || cb.dataset.email || (String(cb.value).includes('@') ? cb.value : '');
+      const uEmail = String(rawEmail || '').trim().toLowerCase();
+      const uName = (u && u.name) || cb.dataset.name || 'Docente Investigador';
+      if (!assignedIds.includes(uId)) {
+        targetDocentes.push({ id: uId, name: uName, email: uEmail });
+        assignedIds.push(uId);
+      }
+    });
+
+    const customEmails = (customEmailsInput ? customEmailsInput.value : '')
+      .split(/[\s,;]+/)
+      .map(e => e.trim().toLowerCase())
+      .filter(e => e && e.includes('@'));
+
+    customEmails.forEach(emailVal => {
+      let existingUser = window.appStore.getUsers().find(u => u.email && u.email.toLowerCase() === emailVal);
+      if (!existingUser) {
+        const cleanName = emailVal.split('@')[0].split('.').map(p => p.charAt(0).toUpperCase() + p.slice(1)).join(' ');
+        existingUser = window.appStore.createEmployee({
+          name: `Docente ${cleanName}`,
+          email: emailVal,
+          area: area,
+          department: `Área de ${window.DECANATURA_AREAS[area]?.name || 'Investigación EFIM'}`
+        });
+      }
+      const uId = existingUser.id || existingUser._id || emailVal;
+      if (!assignedIds.includes(uId) && !targetDocentes.some(d => d.email === emailVal)) {
+        targetDocentes.push({ id: uId, name: existingUser.name, email: existingUser.email || emailVal });
+        assignedIds.push(uId);
+      }
+    });
+
+    if (assignedIds.length === 0) {
+      AlertsEngine.showToast('Docentes Requeridos', 'Seleccione al menos un docente responsable.', 'warning');
+      return;
+    }
+
+    // Recopilar checklist
+    const checklistInputs = document.querySelectorAll('#editChecklistItemsContainer input[type="text"]');
+    const checklist = [];
+    checklistInputs.forEach((inp, idx) => {
+      const val = inp.value.trim();
+      if (val) {
+        checklist.push({
+          id: 'chk-' + Date.now() + '-' + idx,
+          text: val,
+          completed: false
+        });
+      }
+    });
+
+    // Guardar cambios en el store y sincronizar con MongoDB
+    const updates = {
+      title,
+      description,
+      area,
+      priority,
+      status,
+      dueDate: new Date(dueDate).toISOString(),
+      assignedTo: assignedIds.length === 1 ? assignedIds[0] : assignedIds,
+      checklist,
+      isDraft: false
+    };
+
+    window.appStore.updateTask(taskId, updates);
+
+    // Cerrar modal
+    document.getElementById('editTaskModal').classList.remove('active');
+
+    // Registrar comentario automático de auditoría
+    const currentUser = Auth.getCurrentUser();
+    const editorName = currentUser ? currentUser.name : 'Directivo';
+    window.appStore.addComment(taskId, `✏️ ${editorName} actualizó y corrigió los detalles de esta actividad académica (título, descripción, asignados, fecha o entregables).`, 'general');
+
+    AlertsEngine.showToast(
+      'Actividad Actualizada',
+      `La tarea "${title}" ha sido corregida y actualizada exitosamente.`,
+      'success',
+      6000
+    );
+
+    // Notificar por correo si se solicitó
+    if (shouldNotify && window.EmailModule && targetDocentes.length > 0) {
+      const updatedTask = window.appStore.getTaskById(taskId) || { ...updates, id: taskId };
+      EmailModule.notifyTaskUpdatedMulti(updatedTask, targetDocentes).catch(err => {
+        console.warn('Error al notificar actualización por correo:', err);
+      });
+    }
+
+    this.render();
   }
 };
 
