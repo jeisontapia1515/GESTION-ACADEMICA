@@ -4,6 +4,14 @@ const EmailConfig = require("../models/EmailConfig");
 const router = express.Router();
 let nodemailer = null;
 try { nodemailer = require("nodemailer"); } catch(e) {}
+let sgMail = null;
+try { 
+  sgMail = require("@sendgrid/mail"); 
+  if (process.env.SENDGRID_API_KEY) {
+    sgMail.setApiKey(process.env.SENDGRID_API_KEY);
+    console.log("SendGrid API configurado");
+  }
+} catch(e) {}
 const fs = require("fs");
 const path = require("path");
 const DATA_DIR = path.join(__dirname, "../data");
@@ -214,8 +222,14 @@ function getTransporterForAccount(accountCfg) {
     }
   };
 
+  // Para Office 365 en puerto 587, forzar STARTTLS
   if (isOffice365 && !isSecure) {
     transporterOptions.requireTLS = true;
+  }
+
+  // Para Office 365 en puerto 465, forzar SSL
+  if (isOffice365 && isSecure) {
+    transporterOptions.requireTLS = false;
   }
 
   const transporter = nodemailer.createTransport(transporterOptions);
@@ -281,6 +295,31 @@ async function sendMailWithRetry(transporter, mailOptions, accountCfg) {
   }
 }
 
+// SendGrid API fallback
+async function sendViaSendGrid(mailOptions, accountCfg) {
+  if (!sgMail) {
+    throw new Error("SendGrid no configurado");
+  }
+  const fromAddress = accountCfg?.fromAddress || accountCfg?.user || "decanatura@esfim.edu.co";
+  const fromName = accountCfg?.fromName || "Decanatura de Investigación - ESFIM";
+  
+  const msg = {
+    to: mailOptions.to,
+    from: { email: fromAddress, name: fromName },
+    replyTo: mailOptions.replyTo || fromAddress,
+    subject: mailOptions.subject,
+    text: mailOptions.text,
+    html: mailOptions.html,
+  };
+  
+  const [response] = await sgMail.send(msg);
+  return {
+    info: { messageId: response.headers["x-message-id"] || `sendgrid-${Date.now()}` },
+    from: `${fromName} <${fromAddress}>`,
+    usedAuthenticatedSender: true
+  };
+}
+
 async function sendMailBatchParallel(transporter, recipients, accountCfg, type, metadata) {
   // Envía múltiples correos en paralelo por lotes de 4 con delay mínimo entre lotes
   const results = [];
@@ -295,6 +334,7 @@ async function sendMailBatchParallel(transporter, recipients, accountCfg, type, 
       const subject = (typeof item === 'object' && item.subject) || item.subject;
       const sanitizedHtml = sanitizeAppUrl(rawHtml, null, accountCfg);
       const sanitizedText = sanitizeAppUrl(rawText, null, accountCfg);
+      const toStr = toName ? `"${String(toName).replace(/"/g, "")}" <${to.trim()}>` : String(to || "").trim();
 
       const emailRecord = {
         id: "email-" + Date.now() + "-" + Math.random().toString(36).substring(2, 7),
@@ -316,7 +356,6 @@ async function sendMailBatchParallel(transporter, recipients, accountCfg, type, 
         try {
           const fromStr = getOptimalFrom(accountCfg);
           const replyToStr = formatFrom(accountCfg.fromName, accountCfg.fromAddress || accountCfg.user);
-          const toStr = toName ? `"${String(toName).replace(/"/g, "")}" <${to.trim()}>` : to.trim();
           const { info, from, usedAuthenticatedSender } = await sendMailWithRetry(transporter, {
             from: fromStr,
             replyTo: replyToStr,
@@ -332,12 +371,54 @@ async function sendMailBatchParallel(transporter, recipients, accountCfg, type, 
           console.log(`[SMTP OK] Correo enviado a ${to} [${info.messageId}]`);
         } catch (e) {
           console.error(`[SMTP FAIL] Error enviando a ${to}:`, e.message);
+          // Intentar SendGrid como fallback
+          if (sgMail) {
+            try {
+              const { info, from } = await sendViaSendGrid({
+                to: toStr,
+                subject: emailRecord.subject,
+                html: emailRecord.html,
+                text: emailRecord.text,
+                replyTo: formatFrom(accountCfg.fromName, accountCfg.fromAddress || accountCfg.user)
+              }, accountCfg);
+              emailRecord.from = from;
+              emailRecord.status = "sent_sendgrid";
+              emailRecord.smtpMessage = `Enviado via SendGrid API [${info.messageId}]`;
+              console.log(`[SENDGRID OK] Correo enviado a ${to} [${info.messageId}]`);
+            } catch (sgErr) {
+              console.error(`[SENDGRID FAIL] Error enviando a ${to}:`, sgErr.message);
+              emailRecord.status = "simulated";
+              emailRecord.smtpMessage = `Fallo SMTP/SendGrid: ${e.message} / ${sgErr.message} (buzon virtual ESFIM)`;
+            }
+          } else {
+            emailRecord.status = "simulated";
+            emailRecord.smtpMessage = `Fallo SMTP: ${e.message} (buzon virtual ESFIM)`;
+          }
+        }
+      } else if (sgMail) {
+        // Sin SMTP configurado, usar SendGrid directamente
+        try {
+          const fromStr = getOptimalFrom(accountCfg);
+          const replyToStr = formatFrom(accountCfg.fromName, accountCfg.fromAddress || accountCfg.user);
+          const toStr = toName ? `"${String(toName).replace(/"/g, "")}" <${to.trim()}>` : to.trim();
+          const { info, from } = await sendViaSendGrid({
+            from: fromStr,
+            replyTo: replyToStr,
+            to: toStr,
+            subject: emailRecord.subject,
+            html: emailRecord.html,
+            text: emailRecord.text
+          }, accountCfg);
+          emailRecord.from = from;
+          emailRecord.status = "sent_sendgrid";
+          emailRecord.smtpMessage = `Enviado via SendGrid API [${info.messageId}]`;
+          console.log(`[SENDGRID OK] Correo enviado a ${to} [${info.messageId}]`);
+        } catch (sgErr) {
+          console.error(`[SENDGRID FAIL] Error enviando a ${to}:`, sgErr.message);
           emailRecord.status = "simulated";
-          emailRecord.smtpMessage = `Fallo SMTP: ${e.message} (buzon virtual ESFIM)`;
+          emailRecord.smtpMessage = `Fallo SendGrid: ${sgErr.message} (buzon virtual ESFIM)`;
         }
       } else {
-        emailRecord.status = "simulated";
-        emailRecord.smtpMessage = `SMTP no configurado. Registrado en buzon virtual ESFIM.`;
       }
       return emailRecord;
     }));
@@ -489,48 +570,78 @@ router.post("/test-email", protect, async (req, res) => {
 
   const resolved = resolveAccount(cfg, account || "decano", req.user);
   const targetCfg = resolved.cfg;
+  const roleLabel = resolved.key === 'decano' ? 'Decano de Investigación' : 'Gestor / Coordinador';
+  const fromStr = formatFrom(targetCfg.fromName || roleLabel, targetCfg.fromAddress || targetCfg.user);
 
-  if (!targetCfg || !targetCfg.host || !targetCfg.user || !targetCfg.pass) {
-    return res.status(400).json({
-      success: false,
-      message: `La cuenta de ${resolved.key === 'decano' ? 'Decano' : 'Gestor'} no tiene credenciales SMTP completas.`
-    });
-  }
+  const html = `
+    <div style="font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; padding:20px; background:#f1f5f9; color:#1e293b;">
+      <div style="max-width:550px; margin:0 auto; background:#fff; border-radius:8px; border:1px solid #cbd5e1; overflow:hidden; box-shadow:0 4px 12px rgba(0,0,0,0.06);">
+        <div style="background-color:#0a192f; padding:16px 20px; text-align:center; border-bottom:3px solid #c99736;">
+          <img src="cid:esfim_logo" alt="Escudo Decanatura ESFIM" width="55" height="55" border="0" style="display:block; margin:0 auto 6px; width:55px; height:55px; max-width:55px;" />
+          <h2 style="color:#ffffff; margin:0; font-size:15px; letter-spacing:0.8px; text-transform:uppercase;">ARMADA NACIONAL DE COLOMBIA</h2>
+          <div style="color:#c99736; font-size:12px; margin-top:2px; font-weight:600; text-transform:uppercase; letter-spacing:0.5px;">Escuela de Formación de Infantería de Marina • Decanatura de Investigación</div>
+        </div>
+        <div style="padding:22px 24px;">
+          <h3 style="color:#0a192f; margin-top:0; font-size:16px;">Verificación de Correo Institucional</h3>
+          <p style="font-size:13.5px; line-height:1.5; color:#334155;">Este es un correo de prueba enviado exitosamente desde la cuenta oficial de <strong>${roleLabel}</strong> (<code>${targetCfg.user || fromStr}</code>) para la <strong>Decanatura de Investigación - ESFIM</strong>.</p>
+          <div style="background:#ecfdf5; border:1px solid #a7f3d0; border-radius:6px; padding:10px 14px; margin:14px 0; color:#065f46; font-size:13px; font-weight:600;">
+            ✅ Correo enviado exitosamente.
+          </div>
+          <hr style="border:0; border-top:1px solid #e2e8f0; margin:18px 0;" />
+          <small style="color:#64748b; font-size:11px;">Escuela de Formación de Infantería de Marina • Coveñas, Sucre — República de Colombia</small>
+        </div>
+      </div>
+    </div>
+  `;
+  const text = `Prueba oficial de conexión del sistema de notificaciones enviada desde la cuenta de ${roleLabel} (${targetCfg.user}).`;
 
   try {
-    const t = getTransporterForAccount(targetCfg);
-    if (!t) return res.status(400).json({ success: false, message: "No se pudo inicializar el transporte SMTP." });
+    let info = null;
+    let from = fromStr;
+    let status = "simulated";
+    let via = "buzón virtual";
 
-    const roleLabel = resolved.key === 'decano' ? 'Decano de Investigación' : 'Gestor / Coordinador';
-    const fromStr = formatFrom(targetCfg.fromName || roleLabel, targetCfg.fromAddress || targetCfg.user);
+    // Intentar SMTP
+    if (nodemailer && targetCfg.host && targetCfg.user && targetCfg.pass) {
+      try {
+        const t = getTransporterForAccount(targetCfg);
+        if (t) {
+          const result = await sendMailWithRetry(t, {
+            from: fromStr,
+            to,
+            subject: `[PRUEBA ${roleLabel.toUpperCase()}] Verificación SMTP ESFIM`,
+            text,
+            html,
+            attachments: getLogoAttachment()
+          }, targetCfg);
+          info = result.info;
+          from = result.from;
+          status = "sent_smtp";
+          via = "SMTP";
+        }
+      } catch (e) {
+        console.warn("[TEST-EMAIL] SMTP falló:", e.message);
+      }
+    }
 
-    const { info, from } = await sendMailWithRetry(t, {
-      from: fromStr,
-      to,
-      subject: `[PRUEBA ${roleLabel.toUpperCase()}] Verificación SMTP ESFIM`,
-      text: `Prueba oficial de conexión del sistema de notificaciones enviada desde la cuenta de ${roleLabel} (${targetCfg.user}).`,
-      html: `
-        <div style="font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; padding:20px; background:#f1f5f9; color:#1e293b;">
-          <div style="max-width:550px; margin:0 auto; background:#fff; border-radius:8px; border:1px solid #cbd5e1; overflow:hidden; box-shadow:0 4px 12px rgba(0,0,0,0.06);">
-            <div style="background-color:#0a192f; padding:16px 20px; text-align:center; border-bottom:3px solid #c99736;">
-              <img src="cid:esfim_logo" alt="Escudo Decanatura ESFIM" width="55" height="55" border="0" style="display:block; margin:0 auto 6px; width:55px; height:55px; max-width:55px;" />
-              <h2 style="color:#ffffff; margin:0; font-size:15px; letter-spacing:0.8px; text-transform:uppercase;">ARMADA NACIONAL DE COLOMBIA</h2>
-              <div style="color:#c99736; font-size:12px; margin-top:2px; font-weight:600; text-transform:uppercase; letter-spacing:0.5px;">Escuela de Formación de Infantería de Marina • Decanatura de Investigación</div>
-            </div>
-            <div style="padding:22px 24px;">
-              <h3 style="color:#0a192f; margin-top:0; font-size:16px;">Verificación de Correo Institucional</h3>
-              <p style="font-size:13.5px; line-height:1.5; color:#334155;">Este es un correo de prueba enviado exitosamente desde la cuenta oficial de <strong>${roleLabel}</strong> (<code>${targetCfg.user}</code>) para la <strong>Decanatura de Investigación - ESFIM</strong>.</p>
-              <div style="background:#ecfdf5; border:1px solid #a7f3d0; border-radius:6px; padding:10px 14px; margin:14px 0; color:#065f46; font-size:13px; font-weight:600;">
-                ✅ Conexión SMTP autenticada y correo aceptado por el servidor.
-              </div>
-              <hr style="border:0; border-top:1px solid #e2e8f0; margin:18px 0;" />
-              <small style="color:#64748b; font-size:11px;">Escuela de Formación de Infantería de Marina • Coveñas, Sucre — República de Colombia</small>
-            </div>
-          </div>
-        </div>
-      `,
-      attachments: getLogoAttachment()
-    }, targetCfg);
+    // Fallback a SendGrid
+    if (!info && sgMail) {
+      try {
+        const result = await sendViaSendGrid({
+          to,
+          from: fromStr,
+          subject: `[PRUEBA ${roleLabel.toUpperCase()}] Verificación SMTP ESFIM`,
+          text,
+          html
+        }, targetCfg);
+        info = result.info;
+        from = result.from;
+        status = "sent_sendgrid";
+        via = "SendGrid API";
+      } catch (e) {
+        console.error("[TEST-EMAIL] SendGrid falló:", e.message);
+      }
+    }
 
     const emails = loadEmails();
     emails.unshift({
@@ -543,36 +654,25 @@ router.post("/test-email", protect, async (req, res) => {
       subject: `[PRUEBA ${roleLabel.toUpperCase()}] Verificación SMTP ESFIM`,
       type: "test_email",
       createdAt: new Date().toISOString(),
-      status: "sent_smtp",
-      smtpMessage: `Aceptado por SMTP desde ${from} [${info.messageId}]`
+      status,
+      smtpMessage: `Enviado via ${via} [${info?.messageId || "N/A"}]`
     });
     saveEmails(emails);
 
-    res.json({
-      success: true,
-      senderAccount: resolved.key,
-      from,
-      messageId: info.messageId,
-      message: `El servidor SMTP aceptó el correo de prueba desde la cuenta de ${roleLabel} (${targetCfg.user}).`
-    });
+    if (status === "sent_smtp" || status === "sent_sendgrid") {
+      res.json({
+        success: true,
+        senderAccount: resolved.key,
+        from,
+        messageId: info?.messageId,
+        message: `Correo de prueba enviado via ${via} desde ${from}.`
+      });
+    } else {
+      res.status(500).json({ success: false, message: "No se pudo enviar el correo de prueba (ni SMTP ni SendGrid disponibles)." });
+    }
   } catch (err) {
     console.error("Error en test-email:", err.message);
-    const emails = loadEmails();
-    emails.unshift({
-      id: "email-" + Date.now() + "-" + Math.random().toString(36).substring(2, 7),
-      to,
-      toName: to,
-      from: targetCfg.fromAddress || targetCfg.user,
-      fromName: targetCfg.fromName,
-      senderAccount: resolved.key,
-      subject: "[PRUEBA SMTP] Verificación SMTP ESFIM",
-      type: "test_email",
-      createdAt: new Date().toISOString(),
-      status: "simulated",
-      smtpMessage: `Fallo en prueba SMTP (${resolved.key}): ${err.message}`
-    });
-    saveEmails(emails);
-    res.status(500).json({ success: false, message: `Fallo SMTP (${resolved.key}): ${err.message}` });
+    res.status(500).json({ success: false, message: err.message });
   }
 });
 
@@ -751,7 +851,9 @@ router.post("/smtp-diagnose", protect, async (req, res) => {
     user: targetCfg.user ? targetCfg.user.replace(/(.{2}).*(@.*)/, "$1***$2") : null,
     configured: Boolean(targetCfg.host && targetCfg.user && targetCfg.pass),
     connectivity: null,
-    error: null
+    authStatus: null,
+    error: null,
+    suggestions: []
   };
 
   if (!nodemailer) {
@@ -761,30 +863,67 @@ router.post("/smtp-diagnose", protect, async (req, res) => {
 
   if (!diagnosis.configured) {
     diagnosis.error = "Credenciales SMTP incompletas";
+    diagnosis.suggestions.push("Complete todos los campos: host, puerto, usuario, contraseña.");
     return res.json({ success: false, diagnosis });
   }
 
-  try {
+  // Paso 1: Verificar conexión de red al puerto SMTP
+    let netOk = false;
+    let netError = null;
+    try {
+      const net = require("net");
+      const port = parseInt(targetCfg.port, 10) || 587;
+
+      const socketConnect = new Promise((resolve, reject) => {
+        const socket = net.connect(port, targetCfg.host, () => {
+          socket.end();
+          resolve();
+        });
+        socket.on("error", (e) => reject(e));
+        socket.setTimeout(12000, () => {
+          socket.destroy();
+          reject(new Error("Timeout de red (12s)"));
+        });
+      });
+
+      await socketConnect;
+      netOk = true;
+      diagnosis.connectivity = "OK - Puerto SMTP accesible";
+    } catch (netErr) {
+      netError = netErr.message;
+      diagnosis.connectivity = "FALLIDO - Puerto no accesible";
+      diagnosis.error = netError;
+      diagnosis.suggestions.push("Verifique que el host y puerto sean correctos.");
+      diagnosis.suggestions.push("Si usa Office 365, el puerto 587 debe estar abierto por su ISP/proxy.");
+      diagnosis.suggestions.push("Para entornos corporativos, verifique si el puerto 587 está bloqueado por firewall/proxy.");
+      diagnosis.suggestions.push("Intente con puerto 465 y SSL si el 587 falla.");
+      res.json({ success: false, diagnosis });
+      return;
+    }
+
+    // Paso 2: Verificar autenticación SMTP completa
     const t = getTransporterForAccount(targetCfg);
     if (!t) {
       diagnosis.error = "No se pudo crear el transporter";
       return res.json({ success: false, diagnosis });
     }
 
-    // Verificar conexión con timeout de 20s
-    const connPromise = t.verify();
-    const timeoutPromise = new Promise((_, reject) =>
-      setTimeout(() => reject(new Error("Timeout de conexión (20s)")), 20000)
-    );
+    try {
+      const verifyPromise = t.verify();
+      const timeoutPromise = new Promise((_, reject) =>
+        setTimeout(() => reject(new Error("Timeout de verificación SMTP (20s)")), 20000)
+      );
 
-    await Promise.race([connPromise, timeoutPromise]);
-    diagnosis.connectivity = "OK - Servidor SMTP responde";
-    res.json({ success: true, diagnosis });
-  } catch (err) {
-    diagnosis.connectivity = "FALLIDO";
-    diagnosis.error = err.message;
-    res.json({ success: false, diagnosis });
-  }
+      await Promise.race([verifyPromise, timeoutPromise]);
+      diagnosis.authStatus = "OK - Autenticación SMTP exitosa";
+      diagnosis.connectivity = "OK - Conexión y autenticación correctas";
+      res.json({ success: true, diagnosis });
+    } catch (error) {
+      diagnosis.authStatus = "FALLIDO - Autenticación SMTP no completada";
+      diagnosis.error = error.message;
+      diagnosis.suggestions.push("Verifique el usuario y la contraseña SMTP, y confirme que SMTP AUTH esté habilitado en el proveedor.");
+      res.json({ success: false, diagnosis });
+    }
 });
 
 module.exports = router;

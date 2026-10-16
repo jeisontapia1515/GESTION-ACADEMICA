@@ -353,11 +353,15 @@ const EmailModule = {
               <p style="margin:0.25rem 0 0; font-size:0.8rem; color:var(--text-muted);">
                 Servidor: <code>${d.host}:${d.port}</code> | Seguro: ${d.secure ? 'SSL/TLS' : 'STARTTLS'} | Usuario: ${d.user}
               </p>
+              ${d.authStatus ? `<p style="margin:0.25rem 0 0; font-size:0.8rem; color:#2ecc71;">${d.authStatus}</p>` : ''}
             </div>
           `;
         }
         AlertsEngine.showToast('SMTP Conectado', d.connectivity, 'success');
       } else {
+        const suggestionsHtml = (d.suggestions && d.suggestions.length > 0)
+          ? `<ul style="margin:0.5rem 0 0; padding-left:1.2rem; font-size:0.78rem; color:var(--text-muted);">${d.suggestions.map(s => `<li>${s}</li>`).join('')}</ul>`
+          : '';
         if (resultBox) {
           resultBox.style.background = 'rgba(231, 76, 60, 0.15)';
           resultBox.style.border = '1px solid #e74c3c';
@@ -367,6 +371,7 @@ const EmailModule = {
               <p style="margin:0.25rem 0 0; font-size:0.8rem; color:var(--text-muted);">
                 Servidor: <code>${d.host}:${d.port}</code> | Configurado: ${d.configured ? 'Sí' : 'No'}
               </p>
+              ${suggestionsHtml}
             </div>
           `;
         }
