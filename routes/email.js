@@ -703,6 +703,7 @@ router.post("/send-email", protect, async (req, res) => {
   };
 
   let smtpSuccess = false;
+  let sendGridSuccess = false;
   let smtpError = null;
   let messageId = null;
 
@@ -748,17 +749,44 @@ router.post("/send-email", protect, async (req, res) => {
     emailRecord.smtpMessage = `Fallo de envío SMTP (${resolved.key}): ${e.message} (Disponible en buzón virtual EFIM)`;
   }
 
+  if (!smtpSuccess && sgMail) {
+    try {
+      const { info, from } = await sendViaSendGrid({
+        to: toStr,
+        subject,
+        html: sanitizedHtml,
+        text: sanitizedText,
+        replyTo: targetCfg.fromAddress || targetCfg.user
+      }, targetCfg);
+      sendGridSuccess = true;
+      messageId = info.messageId;
+      emailRecord.from = from;
+      emailRecord.status = "sent_sendgrid";
+      emailRecord.smtpMessage = `Aceptado por SendGrid API [${info.messageId}]`;
+    } catch (sendGridError) {
+      console.error("Error SendGrid al enviar a", to, ":", sendGridError.message);
+      smtpError = smtpError
+        ? `SMTP: ${smtpError}; SendGrid: ${sendGridError.message}`
+        : sendGridError.message;
+      emailRecord.status = "simulated";
+      emailRecord.smtpMessage = `Fallo SMTP/SendGrid: ${smtpError} (Disponible en buzón virtual EFIM)`;
+    }
+  }
+
   const emails = loadEmails();
   emails.unshift(emailRecord);
   saveEmails(emails);
 
-  if (smtpSuccess) {
+  if (smtpSuccess || sendGridSuccess) {
+    const status = smtpSuccess ? "sent_smtp" : "sent_sendgrid";
     res.json({
       success: true,
-      status: "sent_smtp",
+      status,
       senderAccount: resolved.key,
       messageId,
-      message: `Correo entregado exitosamente vía SMTP desde la cuenta de ${resolved.key === 'decano' ? 'Decano' : 'Gestor'}.`
+      message: smtpSuccess
+        ? `Correo aceptado vía SMTP desde la cuenta de ${resolved.key === 'decano' ? 'Decano' : 'Gestor'}.`
+        : `Correo aceptado por SendGrid desde la cuenta de ${resolved.key === 'decano' ? 'Decano' : 'Gestor'}.`
     });
   } else {
     res.status(502).json({
