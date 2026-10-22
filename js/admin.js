@@ -1429,6 +1429,7 @@ const AdminModule = {
     if (modal) {
       this.editingEmployeeId = null;
       document.getElementById('createEmployeeForm')?.reset();
+      document.getElementById('createEmployeeForm').dataset.dirty = 'false';
       this.currentEmpPhoto = null;
       document.getElementById('employeeModalTitle').textContent = '👥 Gestión de Miembros de Decanatura';
       document.getElementById('employeeSubmitButton').textContent = 'Guardar miembro';
@@ -1484,6 +1485,7 @@ const AdminModule = {
 
     document.getElementById('employeeModalTitle').textContent = `✏️ Editar miembro: ${employee.name}`;
     document.getElementById('employeeSubmitButton').textContent = 'Guardar cambios';
+    document.getElementById('createEmployeeForm').dataset.dirty = 'false';
     this.switchDocenteTab('register');
     modal.classList.add('active');
   },
@@ -1494,6 +1496,7 @@ const AdminModule = {
     try {
       const dataUrl = await window.App.compressImageFile(file, 250, 0.85);
       this.currentEmpPhoto = dataUrl;
+      document.getElementById('createEmployeeForm').dataset.dirty = 'true';
       const preview = document.getElementById('empAvatarPreview');
       const removeBtn = document.getElementById('btnRemoveEmpPhoto');
       if (preview) {
@@ -1509,6 +1512,7 @@ const AdminModule = {
 
   removeEmpPhoto() {
     this.currentEmpPhoto = '';
+    document.getElementById('createEmployeeForm').dataset.dirty = 'true';
     const preview = document.getElementById('empAvatarPreview');
     const removeBtn = document.getElementById('btnRemoveEmpPhoto');
     const input = document.getElementById('empPhotoInput');

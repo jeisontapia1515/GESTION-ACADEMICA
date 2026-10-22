@@ -271,6 +271,20 @@ const App = {
     // Modal Close Buttons
     document.querySelectorAll('.modal-overlay').forEach(overlay => {
       overlay.addEventListener('click', (e) => {
+        if (overlay.id === 'createEmployeeModal') {
+          const form = document.getElementById('createEmployeeForm');
+          const hasUnsavedChanges = form && form.dataset.dirty === 'true';
+          if (e.target === overlay && hasUnsavedChanges) {
+            AlertsEngine.showToast('Formulario sin guardar', 'El formulario permanece abierto para evitar perder los datos ingresados.', 'warning');
+            return;
+          }
+          if (e.target.closest('.btn-modal-cancel') && hasUnsavedChanges
+            && !confirm('Hay datos sin guardar. ¿Desea cerrar y descartarlos?')) {
+            e.preventDefault();
+            e.stopPropagation();
+            return;
+          }
+        }
         if (e.target === overlay) {
           overlay.classList.remove('active');
         }
@@ -294,6 +308,8 @@ const App = {
     const createEmpForm = document.getElementById('createEmployeeForm');
     if (createEmpForm) {
       createEmpForm.addEventListener('submit', (e) => AdminModule.handleCreateEmployeeSubmit(e));
+      createEmpForm.addEventListener('input', () => { createEmpForm.dataset.dirty = 'true'; });
+      createEmpForm.addEventListener('change', () => { createEmpForm.dataset.dirty = 'true'; });
     }
 
     // Add checklist item button
