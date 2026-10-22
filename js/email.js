@@ -87,15 +87,7 @@ const EmailModule = {
     const modal = document.getElementById('emailConfigModal');
     if (!modal) return;
 
-    if (user) {
-      const email = (user.email || '').toLowerCase();
-      const name = (user.name || '').toLowerCase();
-      if (email.includes('decano') || name.includes('decano') || name.includes('perdomo')) {
-        this.activeAccount = 'decano';
-      } else {
-        this.activeAccount = 'gestor';
-      }
-    }
+    this.activeAccount = user.role === 'admin' ? 'decano' : 'gestor';
 
     await this.loadConfig();
     this.selectAccount(this.activeAccount);
@@ -776,7 +768,7 @@ Favor acceder a la plataforma institucional en ${appUrl} para reportar su avance
       if (data.async) {
         AlertsEngine.showToast(
           '✉️ Correos en Envío',
-          `${data.totalCount || recipients.length} notificacion(es) despachadas a: ${namesOrEmails}. El servidor las entregará en segundos.`,
+          `${data.totalCount || recipients.length} notificacion(es) en cola desde la cuenta ${data.senderAccount || 'institucional'} para: ${namesOrEmails}.`,
           'success',
           8000
         );

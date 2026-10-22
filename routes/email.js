@@ -436,15 +436,22 @@ function resolveAccount(cfg, requestedAccount, user) {
   const decanoReady = Boolean(norm.decano.host && norm.decano.user && norm.decano.pass);
   const gestorReady = Boolean(norm.gestor.host && norm.gestor.user && norm.gestor.pass);
 
-  if (requestedAccount === "decano" && decanoReady) {
+  if (requestedAccount === "decano") {
     return { cfg: norm.decano, key: "decano" };
   }
-  if (requestedAccount === "gestor" && gestorReady) {
+  if (requestedAccount === "gestor") {
     return { cfg: norm.gestor, key: "gestor" };
   }
 
-  // Detectar según el usuario autenticado
+  // El rol es la fuente de verdad: admin es el Decano y manager es el Gestor.
   if (user) {
+    if (user.role === "admin") {
+      return { cfg: norm.decano, key: "decano" };
+    } else if (user.role === "manager") {
+      return { cfg: norm.gestor, key: "gestor" };
+    }
+
+    // Compatibilidad con usuarios legados que aún no tienen un rol normalizado.
     const userEmail = (user.email || "").toLowerCase().trim();
     const userName = (user.name || "").toLowerCase();
     const isDecano = userEmail.includes("decano") || userName.includes("decano") || userName.includes("perdomo");
