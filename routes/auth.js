@@ -1,7 +1,7 @@
 const express = require("express");
 const jwt = require("jsonwebtoken");
 const User = require("../models/User");
-const { protect } = require("../middleware/auth");
+const { protect, adminOnly } = require("../middleware/auth");
 const router = express.Router();
 
 const signToken = (id) => jwt.sign({ id }, process.env.JWT_SECRET, { expiresIn: process.env.JWT_EXPIRES_IN || "7d" });
@@ -23,7 +23,7 @@ router.post("/login", async (req, res) => {
           name: "Eduardo Puello",
           email: "eduardo.puello@esfim.edu.co",
           password: "diefi2026",
-          role: "admin",
+          role: "manager",
           department: "Decanatura de Investigación - ESFIM",
           avatar: "EP",
           isActive: true
@@ -33,7 +33,6 @@ router.post("/login", async (req, res) => {
         const isMatch = await user.comparePassword(password);
         if (!isMatch) {
           user.password = "diefi2026";
-          await user.save();
         }
       }
     } else {
@@ -42,6 +41,7 @@ router.post("/login", async (req, res) => {
       }
     }
 
+    if (cleanEmail === "eduardo.puello@esfim.edu.co") user.role = "manager";
     user.lastLogin = new Date();
     user.lastActiveAt = new Date();
     user.loginCount = (user.loginCount || 0) + 1;
@@ -61,7 +61,7 @@ router.get("/me", protect, async (req, res) => {
 });
 
 // POST /api/auth/switch-token (allows switching token for demo / testing between Decano and Docentes in isolated tabs)
-router.post("/switch-token", protect, async (req, res) => {
+router.post("/switch-token", protect, adminOnly, async (req, res) => {
   try {
     const lookup = req.body.userId || req.body.email || req.body.id;
     let target = null;

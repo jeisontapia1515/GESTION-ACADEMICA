@@ -832,7 +832,7 @@
   <div id="createEmployeeModal" class="modal-overlay">
     <div class="modal-dialog lg">
       <div class="modal-header">
-        <h3 style="margin:0;">👥 Verificación y Nómina de Docentes Investigadores</h3>
+        <h3 id="employeeModalTitle" style="margin:0;">👥 Gestión de Miembros de Decanatura</h3>
         <button type="button" class="btn-icon btn-modal-cancel" title="Cerrar">&times;</button>
       </div>
 
@@ -861,7 +861,7 @@
                 <div style="position:absolute; bottom:-2px; right:-2px; width:22px; height:22px; background:var(--primary); color:#fff; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:0.7rem; border:2px solid var(--surface-1);">📷</div>
               </div>
               <div style="flex:1; min-width:0;">
-                <strong style="display:block; font-size:0.85rem; color:var(--text-main); margin-bottom:0.15rem;">Foto del Docente / Miembro (Opcional)</strong>
+                <strong style="display:block; font-size:0.85rem; color:var(--text-main); margin-bottom:0.15rem;">Foto del miembro (Opcional)</strong>
                 <span style="display:block; font-size:0.75rem; color:var(--text-muted); margin-bottom:0.4rem;">Sube una foto del miembro o déjalo en blanco para usar sus iniciales.</span>
                 <div style="display:flex; gap:0.4rem; align-items:center;">
                   <button type="button" class="btn btn-sm btn-secondary" onclick="document.getElementById('empPhotoInput').click()" style="padding:0.25rem 0.65rem; font-size:0.75rem;">
@@ -876,12 +876,12 @@
             </div>
 
             <div class="form-group">
-              <label for="empNameInput">Nombre Completo y Grado / Título Académico *</label>
+              <label for="empNameInput">Nombre completo y grado / título académico *</label>
               <input type="text" id="empNameInput" class="form-control" required placeholder="Ej. Mg. Jeison Tapia o Dr. Roberto Soto" />
             </div>
 
             <div class="form-group">
-              <label for="empEmailInput">Correo Electrónico Institucional *</label>
+              <label for="empEmailInput">Correo institucional *</label>
               <input type="email" id="empEmailInput" class="form-control" required placeholder="ej. jeison.tapia@esfim.edu.co" />
               <small style="color:var(--text-muted); font-size:0.75rem;">A esta dirección llegarán las notificaciones oficiales de compromisos.</small>
             </div>
@@ -891,11 +891,12 @@
                 <label for="empRoleInput">Rol en el Sistema *</label>
                 <select id="empRoleInput" class="form-control">
                   <option value="employee" selected>👨‍🏫 Docente Investigador (Asignado)</option>
-                  <option value="admin">🎖️ Administrador / Gestor de Decanatura (Mando y Delegación)</option>
+                  <option value="manager">📋 Gestor de Decanatura (Tareas delegadas por el Decano)</option>
                 </select>
+                <small style="color:var(--text-muted); font-size:0.75rem;">El Decano conserva el control administrativo; el Gestor solo puede consultar y actualizar las tareas que se le deleguen.</small>
               </div>
               <div class="form-group" style="flex:1;">
-                <label for="empAreaInput">Área Estratégica Asignada *</label>
+                <label for="empAreaInput">Área / factor estratégico al que pertenece *</label>
                 <select id="empAreaInput" class="form-control">
                   <option value="formativa">🔬 1. Investigación Formativa (Semilleros)</option>
                   <option value="aplicada">🚀 2. Investigación Aplicada (Proyectos)</option>
@@ -908,18 +909,19 @@
 
             <div class="form-row">
               <div class="form-group" style="flex:1;">
-                <label for="empPassInput">Contraseña Inicial / Temporal *</label>
+                <label for="empPassInput">Contraseña inicial / nueva</label>
                 <input type="password" id="empPassInput" class="form-control" value="Efim2026*Docente" placeholder="Mínimo 6 caracteres" />
+                <small id="empPassHelp" style="color:var(--text-muted); font-size:0.75rem;">En edición, déjala en blanco para conservar la contraseña actual.</small>
               </div>
               <div class="form-group" style="flex:1;">
-                <label for="empDeptInput">Línea de Investigación o Especialidad</label>
+                <label for="empDeptInput">Línea de investigación o especialidad</label>
                 <input type="text" id="empDeptInput" class="form-control" placeholder="Ej. Semillero Táctico / Ribereñas" />
               </div>
             </div>
           </div>
           <div class="modal-footer">
             <button type="button" class="btn btn-secondary btn-modal-cancel">Cancelar</button>
-            <button type="submit" class="btn btn-primary">Guardar y Habilitar Docente</button>
+            <button id="employeeSubmitButton" type="submit" class="btn btn-primary">Guardar miembro</button>
           </div>
         </form>
       </div>
@@ -928,7 +930,7 @@
       <div id="tabDocentePane-directory" class="doc-modal-tab-pane" style="display:none;">
         <div class="modal-body">
           <p style="font-size:0.85rem; color:var(--text-muted); margin-bottom:1rem;">
-            Listado oficial de docentes investigadores registrados en la Decanatura. El Decano puede retirar a cualquier docente si concluyó su comisión o no continuará en el área.
+            Directorio de docentes y gestores. El Decano puede corregir los datos, el área/factor de pertenencia y el rol de cada miembro.
           </p>
           <div id="employeeDirectoryList" style="max-height:380px; overflow-y:auto;"></div>
         </div>
@@ -1003,7 +1005,6 @@
               <div class="form-group">
                 <label for="regRole">Rol Institucional</label>
                 <select id="regRole" class="form-control">
-                  <option value="admin">Decano de Investigación</option>
                   <option value="employee" selected>Docente Investigador</option>
                 </select>
               </div>

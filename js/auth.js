@@ -139,7 +139,7 @@ const Auth = {
 
     AlertsEngine.showToast(
       'Sesión Iniciada',
-      `Bienvenido(a), ${user.name} (${user.role === 'admin' ? 'Jefatura' : 'Empleado'})`,
+      `Bienvenido(a), ${user.name} (${user.role === 'admin' ? 'Decano' : user.role === 'manager' ? 'Gestor' : 'Docente'})`,
       'success'
     );
 
@@ -157,11 +157,11 @@ const Auth = {
     const initials = userData.name.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase() || 'US';
 
     const newUser = {
-      id: (userData.role === 'admin' ? 'admin-' : 'emp-') + Date.now(),
+      id: 'emp-' + Date.now(),
       name: userData.name,
       email: userData.email,
       password: userData.password,
-      role: userData.role, // 'admin' | 'employee'
+      role: 'employee',
       department: userData.department || (userData.role === 'admin' ? 'Jefatura de Operaciones' : 'Operaciones Generales'),
       avatar: initials
     };
@@ -184,6 +184,11 @@ const Auth = {
   },
 
   async switchUser(userId) {
+    const currentUser = this.getCurrentUser();
+    if (!currentUser || currentUser.role !== 'admin') {
+      AlertsEngine.showToast('Acción no permitida', 'Solo el Decano puede cambiar de perfil desde esta opción.', 'warning');
+      return;
+    }
     const user = window.appStore.getUserById(userId);
     if (!user) return;
 
@@ -217,7 +222,7 @@ const Auth = {
 
     AlertsEngine.showToast(
       'Cambio de Perfil',
-      `Ahora estás visualizando el sistema como: ${user.name} [${user.role === 'admin' ? 'Jefatura' : 'Empleado'}]`,
+      `Ahora estás visualizando el sistema como: ${user.name} [${user.role === 'admin' ? 'Decano' : user.role === 'manager' ? 'Gestor' : 'Docente'}]`,
       'info'
     );
   },
@@ -283,9 +288,8 @@ const Auth = {
       dropdownBtnEmail.style.display = isAdmin ? 'flex' : 'none';
     }
 
-    const uEmail = (user.email || '').toLowerCase();
-    const uName = (user.name || '').toLowerCase();
-    const isDecano = uEmail.includes('decano') || uName.includes('decano') || uName.includes('perdomo');
+    const isDecano = user.role === 'admin';
+    const isManager = user.role === 'manager';
 
     const isPhoto = user.avatar && (
       user.avatar.startsWith('data:image/') ||
@@ -317,22 +321,22 @@ const Auth = {
     if (dropdownUserName) dropdownUserName.textContent = user.name;
     if (dropdownUserEmail) dropdownUserEmail.textContent = user.email || 'correo@armada.mil.co';
     if (dropdownUserBadge) {
-      dropdownUserBadge.textContent = isDecano ? '🛡️ Decano' : (isAdmin ? '📋 Gestor de Mando' : '🎓 Docente Investigador');
+      dropdownUserBadge.textContent = isDecano ? '🛡️ Decano' : (isManager ? '📋 Gestor' : '🎓 Docente Investigador');
     }
     
     // Subtítulo de cargo compacto y estético
     if (roleEl) {
-      if (isAdmin) {
+      if (isAdmin || isManager) {
         roleEl.textContent = isDecano ? 'Decano' : 'Gestor';
       } else {
         roleEl.textContent = 'Docente Investigador';
       }
-      roleEl.title = isDecano ? 'Decano de Investigación' : (isAdmin ? 'Gestor / Coordinador de Investigación' : 'Docente Investigador');
+      roleEl.title = isDecano ? 'Decano de Investigación' : (isManager ? 'Gestor con tareas delegadas por el Decano' : 'Docente Investigador');
     }
 
     if (rolePill) {
-      if (isAdmin) {
-        rolePill.className = 'role-pill admin';
+      if (isAdmin || isManager) {
+        rolePill.className = isAdmin ? 'role-pill admin' : 'role-pill employee';
         rolePill.innerHTML = isDecano ? `🛡️ DECANO` : `📋 GESTOR`;
       } else {
         rolePill.className = 'role-pill employee';
@@ -360,6 +364,9 @@ const Auth = {
       if (u.role === 'admin') {
         icon = '🛡️';
         areaLabel = 'Decano';
+      } else if (u.role === 'manager') {
+        icon = '📋';
+        areaLabel = 'Gestor';
       } else if (u.area && window.DECANATURA_AREAS[u.area]) {
         icon = window.DECANATURA_AREAS[u.area].icon;
         areaLabel = window.DECANATURA_AREAS[u.area].name;

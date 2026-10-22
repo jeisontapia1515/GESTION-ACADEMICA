@@ -69,7 +69,7 @@ const DEFAULT_USERS = [
     id: 'admin-2',
     name: 'Eduardo Puello',
     email: 'eduardo.puello@esfim.edu.co',
-    role: 'admin',
+    role: 'manager',
     department: 'Decanatura de Investigación - ESFIM',
     avatar: 'EP'
   }
@@ -98,6 +98,12 @@ class AppStore {
         const parsed = JSON.parse(existingUsers);
         if (!Array.isArray(parsed) || parsed.length === 0) {
           this.saveUsers(DEFAULT_USERS);
+        } else {
+          const legacyManager = parsed.find(user => String(user.email || '').toLowerCase() === 'eduardo.puello@esfim.edu.co');
+          if (legacyManager && legacyManager.role === 'admin') {
+            legacyManager.role = 'manager';
+            this.saveUsers(parsed);
+          }
         }
       } catch (e) {
         this.saveUsers(DEFAULT_USERS);
@@ -185,7 +191,7 @@ class AppStore {
   }
 
   getEmployees() {
-    return this.getUsers().filter(u => u.role === 'employee');
+    return this.getUsers().filter(u => u.role === 'employee' || u.role === 'manager');
   }
 
   createEmployee(employeeData) {
@@ -196,7 +202,7 @@ class AppStore {
       name: employeeData.name,
       email: employeeData.email,
       password: employeeData.password || '123',
-      role: 'employee',
+      role: employeeData.role === 'manager' ? 'manager' : 'employee',
       area: employeeData.area || 'formativa',
       department: employeeData.department || 'Decanatura de Investigación',
       avatar: initials
@@ -303,7 +309,7 @@ class AppStore {
     try {
       const list = JSON.parse(data);
       if (!Array.isArray(list)) return [];
-      const adminEmails = ['juan.perdomo@esfim.edu.co', 'eduardo.puello@esfim.edu.co'];
+      const adminEmails = ['juan.perdomo@esfim.edu.co'];
       return list.map(t => {
         if (t && Array.isArray(t.assigneeProgress)) {
           t.assigneeProgress = t.assigneeProgress.filter(ap => {
@@ -703,7 +709,7 @@ class AppStore {
     }
 
     // Purgar de assigneeProgress a administradores institucionales
-    const adminEmails = ['juan.perdomo@esfim.edu.co', 'eduardo.puello@esfim.edu.co'];
+    const adminEmails = ['juan.perdomo@esfim.edu.co'];
     task.assigneeProgress = task.assigneeProgress.filter(ap => {
       const uEmail = String(ap.userEmail || '').toLowerCase();
       const uId = String(ap.userId || '').toLowerCase();
@@ -1316,7 +1322,7 @@ class AppStore {
     if (!targetId && !isAdmin) return list;
 
     return list.filter(n => {
-      // El Decano y el Gestor ven todas las notificaciones institucionales de tareas delegadas y actividades de Decanatura
+      // Only the Decano can see all institutional notifications.
       if (isAdmin) {
         return true;
       }

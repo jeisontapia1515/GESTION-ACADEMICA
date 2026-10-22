@@ -522,7 +522,7 @@ const App = {
           <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:0.6rem;">
             <div>
               <strong style="color:#d97706; font-size:0.9rem;">📝 Compromiso Guardado en Borrador</strong>
-              <div style="font-size:0.8rem; color:var(--text-muted); margin-top:2px;">Esta actividad académica fue guardada sin despachar. El Decano o Gestor pueden asignarla cuando decidan a quién le compete.</div>
+              <div style="font-size:0.8rem; color:var(--text-muted); margin-top:2px;">Esta actividad académica fue guardada sin despachar. El Decano puede delegarla cuando decida a quién le compete.</div>
             </div>
             ${isAdmin ? `
               <button class="btn btn-sm btn-primary" onclick="document.getElementById('taskDetailModal').classList.remove('active'); AdminModule.openAssignDraftModal('${task.id}')">

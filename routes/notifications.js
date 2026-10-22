@@ -41,7 +41,7 @@ router.get("/", protect, (req, res) => {
 
   const filtered = allNotifs.filter(n => {
     if (isAdmin) {
-      // El Decano y el Gestor ven todas las actividades de Decanatura, tareas delegadas y notificaciones
+      // Only the Decano can see all institutional notifications.
       return true;
     }
     // Docente / empleado ve las que le pertenecen

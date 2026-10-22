@@ -8,6 +8,7 @@ const AdminModule = {
   currentSearch: '',
   currentAlertFilter: 'all',
   currentView: 'cards', // 'cards' | 'table'
+  editingEmployeeId: null,
 
   getAvatarHtml(avatarValue, initials = 'DC', size = '40px', className = 'user-avatar', extraStyle = '') {
     const isPhoto = avatarValue && (
@@ -356,7 +357,7 @@ const AdminModule = {
     if (task.assignedTo === 'all') {
       return window.appStore.getEmployees();
     }
-    const adminEmails = ['juan.perdomo@esfim.edu.co', 'eduardo.puello@esfim.edu.co'];
+    const adminEmails = ['juan.perdomo@esfim.edu.co'];
     const list = Array.isArray(task.assignedTo) ? task.assignedTo : [task.assignedTo];
     return list.map(item => {
       if (typeof item === 'object' && item && item.email) return item;
@@ -390,7 +391,7 @@ const AdminModule = {
     if (isGroup) {
       window.appStore.ensureAssigneeProgress(task);
     }
-    const adminEmails = ['juan.perdomo@esfim.edu.co', 'eduardo.puello@esfim.edu.co'];
+    const adminEmails = ['juan.perdomo@esfim.edu.co'];
     const memberProgressList = isGroup ? (task.assigneeProgress || []).filter(mp => !adminEmails.some(ae => String(mp.userEmail || '').toLowerCase().includes(ae))) : [];
 
     const dueDateFormatted = task.dueDate ? new Date(task.dueDate).toLocaleString('es-ES', {
@@ -818,7 +819,7 @@ const AdminModule = {
     if (employees.length === 0) {
       container.innerHTML = `
         <div style="padding:1rem; text-align:center; color:var(--text-muted); font-size:0.85rem; border:1px dashed var(--border-subtle); border-radius:6px;">
-          No hay docentes registrados en la planta aún. Registra docentes en "👥 Gestión de Docentes" o ingresa sus correos institucionales abajo.
+          No hay docentes ni gestores registrados. Registra miembros en "👥 Gestión de Docentes" o ingresa sus correos institucionales abajo.
         </div>
       `;
       this.updateAssigneesSummary();
@@ -1157,7 +1158,7 @@ const AdminModule = {
     if (employees.length === 0) {
       container.innerHTML = `
         <div style="padding:1rem; text-align:center; color:var(--text-muted); font-size:0.85rem; border:1px dashed var(--border-subtle); border-radius:6px;">
-          No hay docentes registrados en la planta aún. Registra docentes o ingresa correos abajo.
+          No hay docentes ni gestores registrados. Registra miembros o ingresa correos abajo.
         </div>
       `;
       this.updateDraftAssigneesSummary();
@@ -1426,8 +1427,12 @@ const AdminModule = {
   openCreateEmployeeModal(defaultTab = 'register') {
     const modal = document.getElementById('createEmployeeModal');
     if (modal) {
+      this.editingEmployeeId = null;
       document.getElementById('createEmployeeForm')?.reset();
       this.currentEmpPhoto = null;
+      document.getElementById('employeeModalTitle').textContent = '👥 Gestión de Miembros de Decanatura';
+      document.getElementById('employeeSubmitButton').textContent = 'Guardar miembro';
+      document.getElementById('empPassHelp').textContent = 'Usa una contraseña de al menos 6 caracteres.';
       const preview = document.getElementById('empAvatarPreview');
       const removeBtn = document.getElementById('btnRemoveEmpPhoto');
       const photoInput = document.getElementById('empPhotoInput');
@@ -1440,6 +1445,47 @@ const AdminModule = {
       this.switchDocenteTab(defaultTab);
       modal.classList.add('active');
     }
+  },
+
+  openEditEmployeeModal(employeeId) {
+    const employee = window.appStore.getUserById(employeeId);
+    const modal = document.getElementById('createEmployeeModal');
+    if (!employee || !modal) return;
+
+    this.editingEmployeeId = employee.id || employee._id;
+    this.currentEmpPhoto = null;
+    document.getElementById('createEmployeeForm')?.reset();
+    document.getElementById('empNameInput').value = employee.name || '';
+    document.getElementById('empEmailInput').value = employee.email || '';
+    document.getElementById('empRoleInput').value = employee.role === 'manager' ? 'manager' : 'employee';
+    document.getElementById('empAreaInput').value = employee.area || 'formativa';
+    const areaName = window.DECANATURA_AREAS[employee.area]?.name || '';
+    const areaPrefix = `${areaName} (`;
+    const department = employee.department || '';
+    document.getElementById('empDeptInput').value = department.startsWith(areaPrefix) && department.endsWith(')')
+      ? department.slice(areaPrefix.length, -1)
+      : department === areaName ? '' : department;
+    document.getElementById('empPassInput').value = '';
+    document.getElementById('empPassHelp').textContent = 'Déjala en blanco para conservar la contraseña actual.';
+
+    const preview = document.getElementById('empAvatarPreview');
+    const removeBtn = document.getElementById('btnRemoveEmpPhoto');
+    const photoInput = document.getElementById('empPhotoInput');
+    if (preview) {
+      preview.style.backgroundImage = employee.avatar && employee.avatar.startsWith('data:image/')
+        ? `url("${employee.avatar}")`
+        : 'none';
+      preview.textContent = employee.avatar && !employee.avatar.startsWith('data:image/')
+        ? employee.avatar
+        : (employee.name || 'DC').slice(0, 2).toUpperCase();
+    }
+    if (removeBtn) removeBtn.style.display = employee.avatar && employee.avatar.startsWith('data:image/') ? 'inline-flex' : 'none';
+    if (photoInput) photoInput.value = '';
+
+    document.getElementById('employeeModalTitle').textContent = `✏️ Editar miembro: ${employee.name}`;
+    document.getElementById('employeeSubmitButton').textContent = 'Guardar cambios';
+    this.switchDocenteTab('register');
+    modal.classList.add('active');
   },
 
   async handleEmpPhotoSelected(event) {
@@ -1493,7 +1539,7 @@ const AdminModule = {
     const tasks = window.appStore.getTasks();
 
     if (employees.length === 0) {
-      container.innerHTML = '<div style="padding:2rem; text-align:center; color:var(--text-muted);">No hay docentes registrados en la nómina.</div>';
+      container.innerHTML = '<div style="padding:2rem; text-align:center; color:var(--text-muted);">No hay docentes ni gestores registrados en la nómina.</div>';
       return;
     }
 
@@ -1545,6 +1591,9 @@ const AdminModule = {
             </button>
             <button type="button" class="btn btn-sm btn-secondary" onclick="AdminModule.triggerDocentePhotoUpload('${emp.id || emp._id}')" title="Subir o cambiar foto de este docente" style="font-size:0.75rem; padding:0.35rem 0.65rem;">
               📷 Foto
+            </button>
+            <button type="button" class="btn btn-sm btn-secondary" onclick="AdminModule.openEditEmployeeModal('${emp.id || emp._id}')" title="Corregir los datos del miembro" style="font-size:0.75rem; padding:0.35rem 0.65rem;">
+              ✏️ Editar datos
             </button>
             <button type="button" class="btn btn-sm btn-danger" onclick="AdminModule.askDeleteEmployee('${emp.id}')" title="Retirar docente de la Decanatura" style="font-size:0.75rem; padding:0.35rem 0.75rem;">
               🗑️ Retirar
@@ -1610,7 +1659,7 @@ const AdminModule = {
     if (!select) return;
     const employees = window.appStore.getEmployees();
     select.innerHTML = `
-      <option value="" disabled selected>-- Seleccione el Docente Destinatario --</option>
+      <option value="" disabled selected>-- Seleccione el destinatario --</option>
       ${employees.map(emp => {
         const areaBadge = emp.area && window.DECANATURA_AREAS[emp.area] ? `[${window.DECANATURA_AREAS[emp.area].name}]` : '';
         return `<option value="${emp.id}" data-email="${emp.email}">${emp.name} ${areaBadge} — (${emp.email})</option>`;
@@ -1638,14 +1687,65 @@ const AdminModule = {
     const areaName = (window.DECANATURA_AREAS && window.DECANATURA_AREAS[area]?.name) || 'Investigación';
     const lineOfResearch = document.getElementById('empDeptInput').value.trim();
     const department = lineOfResearch ? `${areaName} (${lineOfResearch})` : (role === 'admin' ? 'Decanatura de Investigación - Mando' : areaName);
-    const password = document.getElementById('empPassInput').value.trim() || 'Efim2026*Docente';
+    const passwordInput = document.getElementById('empPassInput').value.trim();
+    const password = passwordInput || 'Efim2026*Docente';
 
     if (!name || !email) {
       AlertsEngine.showToast('Datos Incompletos', 'Nombre y correo institucional son obligatorios.', 'warning');
       return;
     }
+    if (passwordInput && passwordInput.length < 6) {
+      AlertsEngine.showToast('Contraseña inválida', 'La contraseña debe tener mínimo 6 caracteres.', 'warning');
+      return;
+    }
 
     const token = (window.appStore && window.appStore.getToken) ? window.appStore.getToken() : (sessionStorage.getItem('efim_token') || localStorage.getItem('efim_token'));
+    if (this.editingEmployeeId) {
+      const updatedData = { name, email, role, area, department };
+      if (passwordInput) updatedData.password = passwordInput;
+      if (this.currentEmpPhoto !== null) updatedData.avatar = this.currentEmpPhoto;
+
+      if (token) {
+        try {
+          const response = await fetch(`/api/users/${this.editingEmployeeId}`, {
+            method: 'PUT',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': 'Bearer ' + token
+            },
+            body: JSON.stringify(updatedData)
+          });
+          const data = await response.json();
+          if (!response.ok || !data.success) {
+            AlertsEngine.showToast('No se pudieron guardar los cambios', data.message || 'Verifica los datos e inténtalo de nuevo.', 'danger');
+            return;
+          }
+          Object.assign(updatedData, data.user);
+        } catch (err) {
+          console.error('Error al actualizar miembro en el servidor:', err);
+          AlertsEngine.showToast('Error de conexión', 'No se pudieron guardar los cambios del miembro.', 'danger');
+          return;
+        }
+      }
+
+      const updatedEmployee = window.appStore.updateUser(this.editingEmployeeId, updatedData);
+      if (!updatedEmployee) {
+        AlertsEngine.showToast('Miembro no encontrado', 'No se encontró el miembro para actualizar.', 'danger');
+        return;
+      }
+
+      this.editingEmployeeId = null;
+      document.getElementById('createEmployeeModal').classList.remove('active');
+      if (window.App && window.App.syncUsersFromServer && token) await window.App.syncUsersFromServer();
+      this.updateAssigneeSelect();
+      this.updateDocentesOptgroup();
+      this.populateAssigneesChecklist();
+      this.renderEmployeesInModal();
+      this.render();
+      AlertsEngine.showToast('Datos actualizados', `Se guardaron los cambios de ${updatedEmployee.name}.`, 'success');
+      return;
+    }
+
     let createdDocente = null;
 
     if (token) {
@@ -1681,7 +1781,7 @@ const AdminModule = {
           id: data.user.id || data.user._id,
           name: data.user.name,
           email: data.user.email,
-          role: 'employee',
+          role: data.user.role,
           area: data.user.area,
           department: data.user.department,
           avatar: data.user.avatar
@@ -1710,6 +1810,7 @@ const AdminModule = {
       createdDocente = window.appStore.createEmployee({
         name,
         email,
+        role,
         area,
         department,
         password,
@@ -1724,8 +1825,8 @@ const AdminModule = {
     if (this.populateAssigneesChecklist) this.populateAssigneesChecklist();
 
     AlertsEngine.showToast(
-      'Docente Registrado en MongoDB',
-      `El docente ${createdDocente.name} fue registrado con éxito. Ya se encuentra activo en el panel institucional.`,
+      'Miembro Registrado',
+      `${createdDocente.name} fue registrado con éxito y ya está activo en el panel institucional.`,
       'success',
       6000
     );

@@ -31,6 +31,9 @@ router.post("/heartbeat", protect, async (req, res) => {
 router.post("/", protect, adminOnly, async (req, res) => {
   try {
     const { name, email, password, role, area, department, avatar } = req.body;
+    if (role && !["manager", "employee"].includes(role)) {
+      return res.status(400).json({ success: false, message: "El Decano es el único administrador y no puede delegar ese rol." });
+    }
     const exists = await User.findOne({ email: email.toLowerCase() });
     if (exists) {
       if (!exists.isActive) {
@@ -159,19 +162,47 @@ router.put("/:id", protect, adminOnly, async (req, res) => {
     if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
       return res.status(400).json({ success: false, message: "ID de usuario inválido." });
     }
-    const { name, email, role, area, department, avatar } = req.body;
+    const { name, email, role, area, department, avatar, password } = req.body;
     const user = await User.findById(req.params.id);
     if (!user) return res.status(404).json({ success: false, message: "Usuario no encontrado." });
 
-    if (name) user.name = name.trim();
-    if (email) user.email = email.toLowerCase().trim();
+    if (user.role === "admin" && role && role !== "admin") {
+      return res.status(400).json({ success: false, message: "No se puede cambiar el rol exclusivo del Decano." });
+    }
+    if (role && !["manager", "employee"].includes(role)) {
+      return res.status(400).json({ success: false, message: "El rol de Decano no se puede asignar desde esta opción." });
+    }
+    if (name !== undefined && (typeof name !== "string" || !name.trim())) {
+      return res.status(400).json({ success: false, message: "El nombre no puede quedar vacío." });
+    }
+    if (email !== undefined && (typeof email !== "string" || !email.trim())) {
+      return res.status(400).json({ success: false, message: "El correo institucional no puede quedar vacío." });
+    }
+    if (email) {
+      const formattedEmail = email.toLowerCase().trim();
+      const emailTaken = await User.findOne({ email: formattedEmail, _id: { $ne: user._id } });
+      if (emailTaken) {
+        return res.status(400).json({ success: false, message: "Este correo institucional ya está en uso por otra cuenta." });
+      }
+      user.email = formattedEmail;
+    }
+    if (name !== undefined) {
+      user.name = name.trim();
+    }
     if (role) user.role = role;
     if (area !== undefined) user.area = area;
-    if (department) user.department = department;
+    if (department !== undefined) user.department = department;
     if (avatar !== undefined) user.avatar = avatar;
+    if (password) {
+      if (password.trim().length < 6) {
+        return res.status(400).json({ success: false, message: "La contraseña debe tener mínimo 6 caracteres." });
+      }
+      user.password = password.trim();
+      user.mustChangePassword = false;
+    }
 
     await user.save();
-    res.json({ success: true, user: user.toJSON(), message: "Datos y foto del docente actualizados." });
+    res.json({ success: true, user: user.toJSON(), message: "Datos del miembro actualizados." });
   } catch (err) {
     res.status(500).json({ success: false, message: "Error al actualizar usuario: " + err.message });
   }

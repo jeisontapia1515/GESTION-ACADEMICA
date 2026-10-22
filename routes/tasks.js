@@ -26,7 +26,7 @@ router.get("/", protect, async (req, res) => {
       filter.status = { $ne: "archivado" };
     }
 
-    if (req.user.role === "employee") {
+    if (req.user.role !== "admin") {
       filter.isDraft = { $ne: true };
       filter.status = { $nin: ["archivado", "borrador"] };
 
@@ -105,7 +105,7 @@ router.post("/purge-completed", protect, adminOnly, async (req, res) => {
 });
 
 // PUT /api/tasks/:id/archive - Archive a completed task
-router.put("/:id/archive", protect, async (req, res) => {
+router.put("/:id/archive", protect, adminOnly, async (req, res) => {
   try {
     const task = await Task.findById(req.params.id);
     if (!task) return res.status(404).json({ success: false, message: "Tarea no encontrada." });
@@ -125,22 +125,48 @@ router.put("/:id/archive", protect, async (req, res) => {
   }
 });
 
-// PUT /api/tasks/:id - Update task (admins can edit full task details; employees update progress, comments, checklist)
+// PUT /api/tasks/:id - The Decano edits task details; assignees update progress, comments, and checklist
 router.put("/:id", protect, async (req, res) => {
   try {
+    const task = await Task.findById(req.params.id);
+    if (!task) return res.status(404).json({ success: false, message: "Tarea no encontrada." });
+
+    if (req.user.role !== "admin") {
+      const assignees = Array.isArray(task.assignedTo) ? task.assignedTo : [task.assignedTo];
+      const userIdentifiers = [req.user._id.toString(), req.user.email.toLowerCase()];
+      const isAssigned = assignees.some(assignee => {
+        if (assignee === "all") return true;
+        const identifiers = assignee && typeof assignee === "object"
+          ? [assignee.id, assignee._id, assignee.email]
+          : [assignee];
+        return identifiers.some(identifier =>
+          identifier && userIdentifiers.includes(String(identifier).toLowerCase())
+        );
+      });
+      if (!isAssigned) {
+        return res.status(403).json({ success: false, message: "Solo puede actualizar tareas asignadas a usted." });
+      }
+    }
+
     const updateData = { ...req.body, updatedAt: new Date() };
     delete updateData._id;
     delete updateData.id;
 
-    // Solo directivos (admin: Decano o Gestor) pueden modificar la definición central de la tarea
     if (req.user.role !== "admin") {
-      delete updateData.title;
-      delete updateData.description;
-      delete updateData.dueDate;
-      delete updateData.assignedTo;
-      delete updateData.area;
-      delete updateData.isDraft;
-      delete updateData.createdBy;
+      const assigneeEditableFields = new Set([
+        "progress",
+        "status",
+        "checklist",
+        "assigneeProgress",
+        "comments",
+        "issueReport"
+      ]);
+      for (const key of Object.keys(updateData)) {
+        if (key !== "updatedAt" && !assigneeEditableFields.has(key)) delete updateData[key];
+      }
+      if (updateData.status === "archivado") {
+        return res.status(403).json({ success: false, message: "Solo el Decano puede archivar tareas." });
+      }
     }
 
     if (updateData.priority) updateData.priority = String(updateData.priority).toLowerCase().trim();
@@ -149,8 +175,8 @@ router.put("/:id", protect, async (req, res) => {
       updateData.completedAt = new Date();
     }
 
-    const task = await Task.findByIdAndUpdate(req.params.id, updateData, { new: true, runValidators: true });
-    if (!task) return res.status(404).json({ success: false, message: "Tarea no encontrada." });
+    Object.assign(task, updateData);
+    await task.save();
     
     touchTasksVersion();
     const obj = task.toJSON ? task.toJSON() : task.toObject();

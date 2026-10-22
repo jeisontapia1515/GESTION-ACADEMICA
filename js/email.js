@@ -74,12 +74,12 @@ const EmailModule = {
     return this.openEmailModal(defaultTab);
   },
 
-  // Open the Email Configuration & Outbox Modal (Exclusivo Decano y Gestor)
+  // Open the Email Configuration & Outbox Modal (exclusive to the Dean)
   async openEmailModal(defaultTab = 'config') {
     const user = (window.Auth && window.Auth.getCurrentUser) ? window.Auth.getCurrentUser() : null;
     if (!user || user.role !== 'admin') {
       if (window.AlertsEngine) {
-        AlertsEngine.showToast('Acceso Restringido', 'El apartado de configuración de correo está reservado exclusivamente para el Decano y el Gestor.', 'warning');
+        AlertsEngine.showToast('Acceso Restringido', 'El apartado de configuración de correo está reservado exclusivamente para el Decano.', 'warning');
       }
       return;
     }
